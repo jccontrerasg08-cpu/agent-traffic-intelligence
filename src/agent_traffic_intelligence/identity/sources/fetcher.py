@@ -73,16 +73,17 @@ class SocketAddressResolver:
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host: str, port: int, *, pinned_address: str, timeout: float) -> None:
-        super().__init__(host, port=port, timeout=timeout, context=ssl.create_default_context())
+        ssl_context = ssl.create_default_context()
+        super().__init__(host, port=port, timeout=timeout, context=ssl_context)
         self._pinned_address = pinned_address
+        self._ssl_context = ssl_context
 
     def connect(self) -> None:
         sock = socket.create_connection(
             (self._pinned_address, self.port),
             self.timeout,
-            self.source_address,
         )
-        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+        self.sock = self._ssl_context.wrap_socket(sock, server_hostname=self.host)
 
 
 class PinnedHttpsTransport:
