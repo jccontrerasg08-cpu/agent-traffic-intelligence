@@ -22,7 +22,10 @@ def test_prefixes_v1_parses_ipv4_and_ipv6() -> None:
         }
     )
     assert parsed.creation_time == datetime(2026, 8, 14, 10, 0, tzinfo=UTC)
-    assert [str(item.network) for item in parsed.ranges] == ["192.0.2.0/24", "2001:db8::/32"]
+    assert [str(item.network) for item in parsed.ranges] == [
+        "192.0.2.0/24",
+        "2001:db8::/32",
+    ]
     assert parsed.source_profile == "prefixes-v1"
 
 
@@ -31,14 +34,21 @@ def test_prefixes_v1_rejects_malformed_prefix_object() -> None:
         parse_prefixes_v1(
             {
                 "creationTime": "2026-08-14T10:00:00Z",
-                "prefixes": [{"ipv4Prefix": "192.0.2.0/24", "ipv6Prefix": "2001:db8::/32"}],
+                "prefixes": [
+                    {
+                        "ipv4Prefix": "192.0.2.0/24",
+                        "ipv6Prefix": "2001:db8::/32",
+                    }
+                ],
             }
         )
 
 
-def test_prefixes_v1_rejects_naive_creation_time() -> None:
-    with pytest.raises(RangeFormatError, match="timezone-aware"):
-        parse_prefixes_v1({"creationTime": "2026-08-14T10:00:00", "prefixes": []})
+def test_prefixes_v1_treats_provider_naive_creation_time_as_utc() -> None:
+    parsed = parse_prefixes_v1(
+        {"creationTime": "2026-08-14T10:00:00.000000", "prefixes": []}
+    )
+    assert parsed.creation_time == datetime(2026, 8, 14, 10, 0, tzinfo=UTC)
 
 
 def test_jafar_ignores_unknown_fields_and_invalid_prefix_objects() -> None:
@@ -69,6 +79,8 @@ def test_jafar_rejects_non_string_service() -> None:
         parse_jafar(
             {
                 "creationTime": "2026-08-14T10:00:00Z",
-                "prefixes": [{"ipv4Prefix": "192.0.2.0/24", "services": ["ok", 3]}],
+                "prefixes": [
+                    {"ipv4Prefix": "192.0.2.0/24", "services": ["ok", 3]}
+                ],
             }
         )
