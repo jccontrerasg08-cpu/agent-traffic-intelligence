@@ -67,9 +67,12 @@ class DirectoryKey:
         object.__setattr__(self, "jwk", MappingProxyType(dict(self.jwk)))
         if self.use not in (None, "sig"):
             raise DirectoryFormatError("directory key use must be 'sig' when present")
-        if self.not_before is not None and self.expires is not None:
-            if self.expires <= self.not_before:
-                raise DirectoryFormatError("directory key exp must be later than nbf")
+        if (
+            self.not_before is not None
+            and self.expires is not None
+            and self.expires <= self.not_before
+        ):
+            raise DirectoryFormatError("directory key exp must be later than nbf")
 
     def active_at(self, when: datetime) -> bool:
         if when.tzinfo is None or when.utcoffset() is None:
