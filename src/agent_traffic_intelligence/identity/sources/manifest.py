@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +33,6 @@ def write_manifest_atomic(path: Path, payload: dict[str, Any]) -> None:
             os.fsync(stream.fileno())
         os.replace(temp_name, path)
     except BaseException:
-        try:
+        with suppress(FileNotFoundError):
             os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
         raise
