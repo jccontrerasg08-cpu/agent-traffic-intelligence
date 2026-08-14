@@ -4,7 +4,10 @@ import base64
 
 import pytest
 
-from agent_traffic_intelligence.identity.crypto.agent_card import AgentCardFormatError, parse_agent_card
+from agent_traffic_intelligence.identity.crypto.agent_card import (
+    AgentCardFormatError,
+    parse_agent_card,
+)
 
 
 def inline_jwks() -> dict[str, object]:
@@ -37,7 +40,9 @@ def test_registry_03_parses_cimd_and_web_bot_auth_extension() -> None:
 
 def test_card_rejects_ambiguous_keys_and_bad_binding() -> None:
     with pytest.raises(AgentCardFormatError, match="both jwks_uri and jwks"):
-        parse_agent_card({"jwks_uri": "https://example.com/keys", "jwks": inline_jwks()})
+        parse_agent_card(
+            {"jwks_uri": "https://example.com/keys", "jwks": inline_jwks()}
+        )
     with pytest.raises(AgentCardFormatError, match="exactly match"):
         parse_agent_card(
             {"client_id": "https://example.com/bot", "client_name": "bot"},
