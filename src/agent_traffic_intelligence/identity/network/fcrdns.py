@@ -17,7 +17,6 @@ from agent_traffic_intelligence.identity.models import (
 from agent_traffic_intelligence.identity.profiles import FcrdnsProfile
 from agent_traffic_intelligence.models import IdentityClaim
 
-
 _TRUSTED_ADDRESS_PROVENANCE = {
     SourceAddressProvenance.DIRECT_PEER,
     SourceAddressProvenance.TRUSTED_EDGE_CLIENT,
