@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("http_sf")
-
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
     SignatureAgentFormatError,
     StructuredFieldSignatureAgentParser,
 )
+
+pytest.importorskip("http_sf")
 
 
 def test_parses_structured_dictionary_and_parameters() -> None:
@@ -22,9 +22,7 @@ def test_parses_structured_dictionary_and_parameters() -> None:
 
 def test_legacy_string_is_explicitly_marked() -> None:
     references = StructuredFieldSignatureAgentParser().parse('"https://agent.example"')
-    assert references == (
-        references[0],
-    )
+    assert len(references) == 1
     assert references[0].label is None
     assert references[0].uri == "https://agent.example"
     assert references[0].legacy is True
