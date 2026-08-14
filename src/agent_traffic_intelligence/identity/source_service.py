@@ -5,9 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from agent_traffic_intelligence.identity.crypto.directory import DirectoryFormatError, parse_key_directory
+from agent_traffic_intelligence.identity.crypto.directory import (
+    DirectoryFormatError,
+    parse_key_directory,
+)
+from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
-from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import parse_prefixes_v1
+from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
+    parse_prefixes_v1,
+)
 from agent_traffic_intelligence.identity.network.ranges import RangeFormatError
 from agent_traffic_intelligence.identity.profiles import load_provider_profiles
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
@@ -21,7 +27,7 @@ class SourceSpec:
     uri: str
     source_type: SourceType
     parser_profile: str
-    binding_scope: object
+    binding_scope: BindingScope
 
 
 def configured_sources() -> tuple[SourceSpec, ...]:
@@ -129,5 +135,4 @@ def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocume
         parser_profile=spec.parser_profile,
         etag=result.etag,
         last_modified=result.last_modified,
-        cache_control=result.cache_control,
     )
