@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 from agent_traffic_intelligence.models import VerificationState
@@ -81,6 +82,7 @@ class VerificationEvidence:
             digest = self.source_sha256.casefold()
             if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
                 raise ValueError("source_sha256 must be a 64-character hexadecimal SHA-256")
+        object.__setattr__(self, "details", MappingProxyType(dict(self.details)))
 
     def to_dict(self) -> dict[str, Any]:
         return {
