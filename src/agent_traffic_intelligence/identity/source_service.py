@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
 from agent_traffic_intelligence.identity.models import BindingScope
@@ -14,7 +14,11 @@ from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
 from agent_traffic_intelligence.identity.profiles import load_provider_profiles
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult, SafeFetcher
-from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
+from agent_traffic_intelligence.identity.sources.models import (
+    SourceDocument,
+    SourceType,
+    ValidationStatus,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +71,19 @@ def source_status(cache: SourceCache) -> list[dict[str, str | bool | None]]:
                 "retrieved_at": (
                     document.metadata.retrieved_at.isoformat() if document else None
                 ),
+                "source_created_at": (
+                    document.metadata.source_created_at.isoformat()
+                    if document and document.metadata.source_created_at
+                    else None
+                ),
+                "expires_at": (
+                    document.metadata.expires_at.isoformat()
+                    if document and document.metadata.expires_at
+                    else None
+                ),
+                "validation_status": (
+                    document.metadata.validation_status.value if document else None
+                ),
             }
         )
     return rows
@@ -79,7 +96,7 @@ def validate_sources(cache: SourceCache) -> list[str]:
         if document is None:
             continue
         try:
-            _validate_document(spec, document)
+            _source_created_at(spec, document.content)
         except ValueError as exc:
             errors.append(f"{spec.provider} {spec.uri}: {exc}")
     return errors
@@ -104,41 +121,92 @@ def refresh_sources(
             last_modified=previous.metadata.last_modified if previous else None,
         )
         if result.not_modified:
+            if previous is None:
+                raise ValueError("received 304 Not Modified without a cached source")
+            cache.put(_revalidated_document(spec, previous, result))
             not_modified += 1
             continue
-        assert result.body is not None
-        document = _document_from_result(spec, result)
-        _validate_document(spec, document)
-        cache.put(document)
+        cache.put(_document_from_result(spec, result))
         refreshed += 1
     return refreshed, not_modified
 
 
-def _validate_document(spec: SourceSpec, document: SourceDocument) -> None:
+def _source_created_at(spec: SourceSpec, content: bytes) -> datetime | None:
     if spec.source_type is SourceType.IP_RANGES:
         if spec.parser_profile == "jafar-00":
-            parse_jafar(document.content)
-            return
+            return parse_jafar(content).creation_time
         if spec.parser_profile == "prefixes-v1":
-            parse_prefixes_v1(document.content)
-            return
+            return parse_prefixes_v1(content).creation_time
         raise ValueError(f"unsupported IP range parser profile: {spec.parser_profile}")
     if spec.source_type is SourceType.KEY_DIRECTORY:
-        parse_key_directory(document.content)
-        return
+        parse_key_directory(content)
+        return None
     raise ValueError(f"unsupported source type: {spec.source_type.value}")
 
 
+def _max_age_seconds(cache_control: str | None) -> int | None:
+    if cache_control is None:
+        return None
+    for directive in cache_control.split(","):
+        name, separator, raw_value = directive.strip().partition("=")
+        if name.casefold() != "max-age" or not separator:
+            continue
+        try:
+            value = int(raw_value.strip().strip('"'))
+        except ValueError:
+            return None
+        return value if value >= 0 else None
+    return None
+
+
+def _expires_at(retrieved_at: datetime, cache_control: str | None) -> datetime | None:
+    max_age = _max_age_seconds(cache_control)
+    if max_age is None:
+        return None
+    return retrieved_at + timedelta(seconds=max_age)
+
+
 def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocument:
+    if result.body is None:
+        raise ValueError("fresh identity source response must contain a body")
+    retrieved_at = datetime.now(UTC)
+    source_created_at = _source_created_at(spec, result.body)
     return SourceDocument.from_bytes(
-        uri=result.uri,
+        uri=spec.uri,
         source_type=spec.source_type,
         provider=spec.provider,
         binding_scope=spec.binding_scope,
-        retrieved_at=datetime.now(UTC),
-        content=result.body or b"",
+        retrieved_at=retrieved_at,
+        source_created_at=source_created_at,
+        expires_at=_expires_at(retrieved_at, result.cache_control),
+        content=result.body,
         content_type=result.content_type,
         parser_profile=spec.parser_profile,
         etag=result.etag,
         last_modified=result.last_modified,
+        validation_status=ValidationStatus.VALID,
+    )
+
+
+def _revalidated_document(
+    spec: SourceSpec,
+    previous: SourceDocument,
+    result: FetchResult,
+) -> SourceDocument:
+    retrieved_at = datetime.now(UTC)
+    expires_at = _expires_at(retrieved_at, result.cache_control)
+    return SourceDocument.from_bytes(
+        uri=spec.uri,
+        source_type=spec.source_type,
+        provider=spec.provider,
+        binding_scope=spec.binding_scope,
+        retrieved_at=retrieved_at,
+        source_created_at=previous.metadata.source_created_at,
+        expires_at=expires_at if expires_at is not None else previous.metadata.expires_at,
+        content=previous.content,
+        content_type=previous.metadata.content_type,
+        parser_profile=spec.parser_profile,
+        etag=result.etag or previous.metadata.etag,
+        last_modified=result.last_modified or previous.metadata.last_modified,
+        validation_status=ValidationStatus.VALID,
     )
