@@ -65,4 +65,4 @@ skip_covered = true
 fail_under = 85
 
 [tool.setuptools.package-data]
-agent_traffic_intelligence = ["agents.json"]
+agent_traffic_intelligence = ["agents.json", "identity/verification_profiles.json"]
