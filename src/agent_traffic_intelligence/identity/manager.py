@@ -21,9 +21,14 @@ from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
 class IdentityVerifier(Protocol):
     """Common execution seam implemented by configured network/crypto adapters."""
 
-    name: str
-    method: VerificationMethod
-    binding_scope: BindingScope
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def method(self) -> VerificationMethod: ...
+
+    @property
+    def binding_scope(self) -> BindingScope: ...
 
     def verify(
         self,
