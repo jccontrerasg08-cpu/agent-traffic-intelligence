@@ -35,11 +35,11 @@ class SourceTrustPolicy:
     def default(cls) -> SourceTrustPolicy:
         uris: set[str] = set()
         for profile in load_provider_profiles().values():
-            for source in profile.range_sources:
-                uris.add(canonicalize_source_uri(source.uri))
+            for range_source in profile.range_sources:
+                uris.add(canonicalize_source_uri(range_source.uri))
             if profile.crypto is not None:
-                for source in profile.crypto.signature_agents:
-                    uris.add(canonicalize_source_uri(source.directory_uri))
+                for crypto_source in profile.crypto.signature_agents:
+                    uris.add(canonicalize_source_uri(crypto_source.directory_uri))
         return cls(frozenset(uris))
 
     def allows(self, uri: str) -> bool:
