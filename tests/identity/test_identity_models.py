@@ -113,3 +113,42 @@ def test_policy_defaults_offline_registry_only_and_bounded() -> None:
 
 def test_verification_state_includes_conflicted() -> None:
     assert VerificationState.CONFLICTED.value == "conflicted"
+
+
+def test_nested_verification_mappings_are_read_only() -> None:
+    context_headers = {"signature-agent": "https://agent.example/directory"}
+    context = VerificationContext(
+        source_ip=None,
+        source_address_provenance=SourceAddressProvenance.UNKNOWN,
+        authority="example.com",
+        method="GET",
+        target_uri="https://example.com/",
+        signature=None,
+        signature_input=None,
+        signature_agent=None,
+        covered_headers=context_headers,
+    )
+    context_headers["signature-agent"] = "https://attacker.invalid/"
+    assert context.covered_headers["signature-agent"] == "https://agent.example/directory"
+    with pytest.raises(TypeError):
+        context.covered_headers["x"] = "y"  # type: ignore[index]
+
+    details = {"matched_prefix_length": 24}
+    evidence = VerificationEvidence(
+        method=VerificationMethod.OFFICIAL_RANGE,
+        outcome=VerificationOutcome.PASS,
+        binding_scope=BindingScope.PROVIDER,
+        authority="example",
+        subject="example",
+        explanation="test",
+        source_uri=None,
+        source_profile=None,
+        retrieved_at=None,
+        expires_at=None,
+        source_sha256=None,
+        details=details,
+    )
+    details["matched_prefix_length"] = 8
+    assert evidence.details["matched_prefix_length"] == 24
+    with pytest.raises(TypeError):
+        evidence.details["x"] = 1  # type: ignore[index]
