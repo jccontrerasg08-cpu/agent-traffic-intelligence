@@ -97,7 +97,7 @@ ati sources refresh
 ati sources validate
 ```
 
-By default the cache lives under the user's platform cache directory. Override it with `ATI_SOURCE_CACHE` when an operator needs an explicit location.
+By default the cache lives under `~/.cache/agent-traffic-intelligence/identity-sources`. Override it with `ATI_SOURCE_CACHE` when an operator needs an explicit location.
 
 Analyze with verification enabled:
 
@@ -192,7 +192,7 @@ ATI output does not contain:
 
 Raw source addresses and signature material required for V1 verification live only in an ephemeral `VerificationContext`; they are not copied into normalized events or detections. User-Agent strings remain because they are a core claim signal and should still receive appropriate retention controls.
 
-Read [`SECURITY.md`](SECURITY.md), [`docs/threat-model.md`](docs/threat-model.md), and [`docs/source-trust.md`](docs/source-trust.md) before using real traffic.
+Read [`SECURITY.md`](SECURITY.md), [`docs/threat-model.md`](docs/threat-model.md), and [`docs/source-trust-policy.md`](docs/source-trust-policy.md) before using real traffic.
 
 ## Research positioning
 
