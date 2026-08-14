@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -18,6 +18,7 @@ from agent_traffic_intelligence.identity.sources.fetcher import FetchResult
 from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
 
 VALID_RANGES = b'{"creationTime":"2026-08-14T00:00:00Z","prefixes":[]}'
+SOURCE_CREATED_AT = datetime(2026, 8, 14, 0, 0, tzinfo=UTC)
 
 
 def range_spec(provider: str = "example") -> SourceSpec:
@@ -36,6 +37,7 @@ def cached_document(
     *,
     etag: str | None = None,
     last_modified: str | None = None,
+    expires_at: datetime | None = None,
 ) -> SourceDocument:
     return SourceDocument.from_bytes(
         uri=spec.uri,
@@ -43,6 +45,8 @@ def cached_document(
         provider=spec.provider,
         binding_scope=spec.binding_scope,
         retrieved_at=datetime(2026, 8, 14, 12, 0, tzinfo=UTC),
+        source_created_at=SOURCE_CREATED_AT,
+        expires_at=expires_at,
         content=content,
         content_type="application/json",
         parser_profile=spec.parser_profile,
@@ -72,15 +76,17 @@ def fetch_result(
     *,
     body: bytes | None = VALID_RANGES,
     not_modified: bool = False,
+    uri: str | None = None,
+    cache_control: str | None = "max-age=3600",
 ) -> FetchResult:
     return FetchResult(
-        uri=spec.uri,
+        uri=uri or spec.uri,
         status=304 if not_modified else 200,
         body=body,
         content_type=None if not_modified else "application/json",
         etag='"v2"',
         last_modified="Fri, 14 Aug 2026 12:00:00 GMT",
-        cache_control="max-age=3600",
+        cache_control=cache_control,
         redirects=0,
         not_modified=not_modified,
     )
@@ -92,7 +98,27 @@ def test_fetch_result_converts_to_cacheable_source_document() -> None:
     document = _document_from_result(spec, result)
     assert document.metadata.binding_scope is BindingScope.PROVIDER
     assert document.metadata.etag == '"v2"'
+    assert document.metadata.source_created_at == SOURCE_CREATED_AT
+    assert document.metadata.expires_at is not None
+    assert document.metadata.expires_at - document.metadata.retrieved_at == timedelta(hours=1)
     assert document.content == result.body
+
+
+def test_redirected_fetch_is_cached_under_configured_authority_uri() -> None:
+    spec = range_spec()
+    result = fetch_result(
+        spec,
+        uri="https://cdn.example.net/provider-ranges.json",
+    )
+    document = _document_from_result(spec, result)
+    assert document.metadata.uri == spec.uri
+
+
+def test_cache_control_without_valid_max_age_leaves_expiry_unknown() -> None:
+    spec = range_spec()
+    for value in (None, "public", "max-age=not-a-number", "max-age=-1"):
+        document = _document_from_result(spec, fetch_result(spec, cache_control=value))
+        assert document.metadata.expires_at is None
 
 
 def test_status_and_validate_use_only_local_cache(tmp_path, monkeypatch) -> None:
@@ -106,6 +132,7 @@ def test_status_and_validate_use_only_local_cache(tmp_path, monkeypatch) -> None
     row = source_status(cache)[0]
     assert row["cached"] is True
     assert row["sha256"]
+    assert row["source_created_at"] == SOURCE_CREATED_AT.isoformat()
     assert validate_sources(cache) == []
 
 
@@ -142,29 +169,48 @@ def test_refresh_stores_valid_source_and_uses_conditional_metadata(
     refreshed_document = cache.get(spec.uri)
     assert refreshed_document is not None
     assert refreshed_document.metadata.etag == '"v2"'
+    assert refreshed_document.metadata.expires_at is not None
 
 
-def test_refresh_304_and_provider_filter_do_not_rewrite_cache(
+def test_refresh_304_revalidates_freshness_without_changing_content(
     tmp_path,
     monkeypatch,
 ) -> None:
+    spec = range_spec()
+    monkeypatch.setattr(service, "configured_sources", lambda: (spec,))
+    cache = SourceCache(tmp_path)
+    original = cached_document(
+        spec,
+        etag='"v1"',
+        expires_at=datetime(2026, 8, 14, 11, 0, tzinfo=UTC),
+    )
+    cache.put(original)
+    fetcher = FakeFetcher([fetch_result(spec, body=None, not_modified=True)])
+
+    refreshed, not_modified = refresh_sources(cache, fetcher=fetcher)
+
+    assert (refreshed, not_modified) == (0, 1)
+    cached = cache.get(spec.uri)
+    assert cached is not None
+    assert cached.metadata.sha256 == original.metadata.sha256
+    assert cached.content == original.content
+    assert cached.metadata.retrieved_at > original.metadata.retrieved_at
+    assert cached.metadata.expires_at is not None
+    assert cached.metadata.expires_at > cached.metadata.retrieved_at
+    assert cached.metadata.etag == '"v2"'
+
+
+def test_provider_filter_does_not_fetch_other_sources(tmp_path, monkeypatch) -> None:
     first = range_spec("first")
     second = range_spec("second")
     monkeypatch.setattr(service, "configured_sources", lambda: (first, second))
     cache = SourceCache(tmp_path)
-    original = cached_document(first, etag='"v1"')
-    cache.put(original)
     fetcher = FakeFetcher([fetch_result(first, body=None, not_modified=True)])
-    refreshed, not_modified = refresh_sources(
-        cache,
-        provider="first",
-        fetcher=fetcher,
-    )
-    assert (refreshed, not_modified) == (0, 1)
+    cache.put(cached_document(first))
+
+    refresh_sources(cache, provider="first", fetcher=fetcher)
+
     assert len(fetcher.calls) == 1
-    cached = cache.get(first.uri)
-    assert cached is not None
-    assert cached.metadata.sha256 == original.metadata.sha256
     assert cache.get(second.uri) is None
 
 
