@@ -11,7 +11,10 @@ from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.directory import KeyDirectory
 from agent_traffic_intelligence.identity.crypto.key_resolver import JwkKeyResolver
 from agent_traffic_intelligence.identity.crypto.replay import ReplayCache
-from agent_traffic_intelligence.identity.crypto.rfc9421 import Rfc9421Result, Rfc9421Verifier
+from agent_traffic_intelligence.identity.crypto.rfc9421 import (
+    Rfc9421Result,
+    Rfc9421Verifier,
+)
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
     SignatureAgentFormatError,
     SignatureAgentParser,
@@ -25,7 +28,10 @@ from agent_traffic_intelligence.identity.models import (
     VerificationMethod,
     VerificationOutcome,
 )
-from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy, canonicalize_source_uri
+from agent_traffic_intelligence.identity.sources.trust import (
+    SourceTrustPolicy,
+    canonicalize_source_uri,
+)
 from agent_traffic_intelligence.models import IdentityClaim
 
 _WEB_BOT_AUTH_TAG = "web-bot-auth"
@@ -69,12 +75,16 @@ class WebBotAuthVerifier:
     ) -> None:
         self._directory = directory
         self._directory_uri = canonicalize_source_uri(directory_uri)
-        self._signature_agent_uri = canonicalize_source_uri(signature_agent_uri or directory_uri)
+        self._signature_agent_uri = canonicalize_source_uri(
+            signature_agent_uri or directory_uri
+        )
         self._binding_scope = binding_scope
         self._subject = subject
         self._trust_policy = trust_policy
         self._rfc = rfc_verifier or Rfc9421Verifier(JwkKeyResolver(directory))
-        self._signature_agent_parser = signature_agent_parser or StructuredFieldSignatureAgentParser()
+        self._signature_agent_parser = (
+            signature_agent_parser or StructuredFieldSignatureAgentParser()
+        )
         self._replay_cache = replay_cache
         self._policy = policy or WebBotAuthPolicy()
 
@@ -88,20 +98,40 @@ class WebBotAuthVerifier:
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("Web Bot Auth verification time must be timezone-aware")
         if not self._trust_policy.allows(self._directory_uri):
-            return self._evidence(claim, VerificationOutcome.UNAVAILABLE, "key directory is not trusted", {"directory_trusted": False})
+            return self._evidence(
+                claim,
+                VerificationOutcome.UNAVAILABLE,
+                "key directory is not trusted",
+                {"directory_trusted": False},
+            )
 
         references: tuple[SignatureAgentReference, ...] = ()
         if context.signature_agent is not None:
             try:
                 references = self._signature_agent_parser.parse(context.signature_agent)
             except SignatureAgentUnavailable:
-                return self._evidence(claim, VerificationOutcome.UNAVAILABLE, "Structured Fields support is unavailable", {"directory_trusted": True})
+                return self._evidence(
+                    claim,
+                    VerificationOutcome.UNAVAILABLE,
+                    "Structured Fields support is unavailable",
+                    {"directory_trusted": True},
+                )
             except SignatureAgentFormatError as exc:
-                return self._evidence(claim, VerificationOutcome.MISMATCH, f"Signature-Agent parse failed: {exc}", {"directory_trusted": True})
+                return self._evidence(
+                    claim,
+                    VerificationOutcome.MISMATCH,
+                    f"Signature-Agent parse failed: {exc}",
+                    {"directory_trusted": True},
+                )
 
         result = self._verify_rfc(context)
         if result.outcome is not VerificationOutcome.PASS:
-            return self._evidence(claim, result.outcome, result.explanation, {"directory_trusted": True})
+            return self._evidence(
+                claim,
+                result.outcome,
+                result.explanation,
+                {"directory_trusted": True},
+            )
 
         params = result.parameters or {}
         try:
@@ -121,38 +151,74 @@ class WebBotAuthVerifier:
         now_ts = int(now.timestamp())
         skew = self._policy.clock_skew_seconds
         if created > now_ts + skew or expires < now_ts - skew:
-            return self._mismatch(claim, "signature validity window does not include verification time")
+            return self._mismatch(
+                claim,
+                "signature validity window does not include verification time",
+            )
         if not ({"@authority", "@target-uri"} & result.covered_component_names):
-            return self._mismatch(claim, "Web Bot Auth must sign @authority or @target-uri")
+            return self._mismatch(
+                claim,
+                "Web Bot Auth must sign @authority or @target-uri",
+            )
 
         try:
             key = self._directory.by_id(key_id)
         except KeyError:
-            return self._evidence(claim, VerificationOutcome.UNAVAILABLE, "keyid is absent from trusted directory", {"directory_trusted": True})
+            return self._evidence(
+                claim,
+                VerificationOutcome.UNAVAILABLE,
+                "keyid is absent from trusted directory",
+                {"directory_trusted": True},
+            )
         if not key.active_at(now):
-            return self._mismatch(claim, "directory key is not active at verification time")
-        if not self._algorithm_matches_key(result.algorithm_id, key.alg, key.kty, key.jwk.get("crv")):
-            return self._mismatch(claim, "signature algorithm is incompatible with directory key")
+            return self._mismatch(
+                claim,
+                "directory key is not active at verification time",
+            )
+        if not self._algorithm_matches_key(
+            result.algorithm_id,
+            key.alg,
+            key.kty,
+            key.jwk.get("crv"),
+        ):
+            return self._mismatch(
+                claim,
+                "signature algorithm is incompatible with directory key",
+            )
 
         signature_agent_bound = False
         legacy = False
         if references:
             selected = self._bound_signature_agent(result, references)
             if selected is None:
-                return self._mismatch(claim, "Signature-Agent was not covered by the verified signature")
+                return self._mismatch(
+                    claim,
+                    "Signature-Agent was not covered by the verified signature",
+                )
             try:
                 referenced_uri = canonicalize_source_uri(selected.uri)
             except ValueError:
-                return self._mismatch(claim, "signed Signature-Agent URI is not acceptable HTTPS")
+                return self._mismatch(
+                    claim,
+                    "signed Signature-Agent URI is not acceptable HTTPS",
+                )
             if referenced_uri != self._signature_agent_uri:
-                return self._mismatch(claim, "signed Signature-Agent URI does not match registered agent identity")
+                return self._mismatch(
+                    claim,
+                    "signed Signature-Agent URI does not match registered agent identity",
+                )
             signature_agent_bound = True
             legacy = selected.legacy
 
         nonce_present = result.nonce is not None
         replay_protected = False
         if result.nonce is not None and self._replay_cache is not None:
-            if self._replay_cache.seen_or_add(key_id, result.nonce, expires=expires, now=now_ts):
+            if self._replay_cache.seen_or_add(
+                key_id,
+                result.nonce,
+                expires=expires,
+                now=now_ts,
+            ):
                 return self._mismatch(claim, "signature nonce was already observed")
             replay_protected = True
 
@@ -186,8 +252,14 @@ class WebBotAuthVerifier:
                 return result
             results.append(result)
         if any(item.outcome is VerificationOutcome.ERROR for item in results):
-            return next(item for item in results if item.outcome is VerificationOutcome.ERROR)
-        if results and all(item.outcome is VerificationOutcome.UNAVAILABLE for item in results):
+            return next(
+                item
+                for item in results
+                if item.outcome is VerificationOutcome.ERROR
+            )
+        if results and all(
+            item.outcome is VerificationOutcome.UNAVAILABLE for item in results
+        ):
             return results[0]
         return Rfc9421Result(
             outcome=VerificationOutcome.MISMATCH,
@@ -216,27 +288,44 @@ class WebBotAuthVerifier:
         if value is None:
             return None
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"verified signature parameter {name} must be an integer")
+            raise ValueError(
+                f"verified signature parameter {name} must be an integer"
+            )
         return value
 
     @staticmethod
-    def _algorithm_matches_key(verified_algorithm: str | None, key_alg: str | None, kty: str, crv: object) -> bool:
+    def _algorithm_matches_key(
+        verified_algorithm: str | None,
+        key_alg: str | None,
+        kty: str,
+        crv: object,
+    ) -> bool:
         compatible = {
             "ed25519": {None, "EdDSA", "ed25519"},
             "ecdsa-p256-sha256": {None, "ES256", "ecdsa-p256-sha256"},
             "rsa-pss-sha512": {None, "PS512", "rsa-pss-sha512"},
             "rsa-v1_5-sha256": {None, "RS256", "rsa-v1_5-sha256"},
         }
-        if verified_algorithm == "ed25519" and not (kty == "OKP" and crv == "Ed25519"):
+        if verified_algorithm == "ed25519" and not (
+            kty == "OKP" and crv == "Ed25519"
+        ):
             return False
-        if verified_algorithm == "ecdsa-p256-sha256" and not (kty == "EC" and crv == "P-256"):
+        if verified_algorithm == "ecdsa-p256-sha256" and not (
+            kty == "EC" and crv == "P-256"
+        ):
             return False
         if verified_algorithm and verified_algorithm.startswith("rsa-") and kty != "RSA":
             return False
-        return verified_algorithm is not None and key_alg in compatible.get(verified_algorithm, set())
+        return (
+            verified_algorithm is not None
+            and key_alg in compatible.get(verified_algorithm, set())
+        )
 
     @staticmethod
-    def _bound_signature_agent(result: Rfc9421Result, references: tuple[SignatureAgentReference, ...]) -> SignatureAgentReference | None:
+    def _bound_signature_agent(
+        result: Rfc9421Result,
+        references: tuple[SignatureAgentReference, ...],
+    ) -> SignatureAgentReference | None:
         signed_keys: set[str | None] = set()
         for component in result.covered_components or {}:
             component_name = component.split(";", 1)[0].strip('"').casefold()
@@ -244,10 +333,22 @@ class WebBotAuthVerifier:
                 continue
             match = _KEY_PARAM_RE.search(component)
             signed_keys.add(match.group(1) if match else None)
-        return next((reference for reference in references if reference.label in signed_keys), None)
+        return next(
+            (reference for reference in references if reference.label in signed_keys),
+            None,
+        )
 
-    def _mismatch(self, claim: IdentityClaim, explanation: str) -> VerificationEvidence:
-        return self._evidence(claim, VerificationOutcome.MISMATCH, explanation, {"directory_trusted": True})
+    def _mismatch(
+        self,
+        claim: IdentityClaim,
+        explanation: str,
+    ) -> VerificationEvidence:
+        return self._evidence(
+            claim,
+            VerificationOutcome.MISMATCH,
+            explanation,
+            {"directory_trusted": True},
+        )
 
     def _evidence(
         self,
