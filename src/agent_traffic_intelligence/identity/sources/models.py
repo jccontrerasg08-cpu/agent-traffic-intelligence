@@ -78,7 +78,7 @@ class SourceMetadata:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "SourceMetadata":
+    def from_dict(cls, payload: dict[str, Any]) -> SourceMetadata:
         def parse_dt(name: str) -> datetime | None:
             value = payload.get(name)
             if value is None:
@@ -144,7 +144,7 @@ class SourceDocument:
         etag: str | None = None,
         last_modified: str | None = None,
         validation_status: ValidationStatus = ValidationStatus.UNVALIDATED,
-    ) -> "SourceDocument":
+    ) -> SourceDocument:
         digest = hashlib.sha256(content).hexdigest()
         metadata = SourceMetadata(
             uri=uri,
