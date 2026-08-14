@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from agent_traffic_intelligence.identity.models import BindingScope
-from agent_traffic_intelligence.identity.source_service import SourceSpec, _document_from_result
+from agent_traffic_intelligence.identity.source_service import (
+    SourceSpec,
+    _document_from_result,
+)
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult
 from agent_traffic_intelligence.identity.sources.models import SourceType
 
