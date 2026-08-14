@@ -31,6 +31,7 @@ class VerificationState(StrEnum):
     CLAIMED = "claimed"
     VERIFIED = "verified"
     FAILED = "failed"
+    CONFLICTED = "conflicted"
 
 
 @dataclass(frozen=True, slots=True)
