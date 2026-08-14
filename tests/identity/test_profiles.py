@@ -1,16 +1,12 @@
 from agent_traffic_intelligence.identity.models import BindingScope
-from agent_traffic_intelligence.identity.profiles import (
-    NegativeSemantics,
-    provider_profile,
-)
+from agent_traffic_intelligence.identity.profiles import provider_profile
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 
-def test_anthropic_shared_range_is_provider_scope() -> None:
-    source = provider_profile("anthropic").range_sources[0]
-    assert source.uri == "https://claude.com/crawling/bots.json"
-    assert source.binding_scope is BindingScope.PROVIDER
-    assert source.negative_semantics is NegativeSemantics.POSITIVE_ONLY
+def test_anthropic_has_no_ip_range_source_without_official_publication() -> None:
+    profile = provider_profile("anthropic")
+    assert profile.range_sources == ()
+    assert profile.fcrdns is None
 
 
 def test_perplexity_sources_are_agent_scoped() -> None:
