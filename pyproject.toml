@@ -33,6 +33,9 @@ dev = [
   "pytest-cov>=5",
   "ruff>=0.9",
 ]
+verification = [
+  "http-message-signatures>=2.0.1,<3",
+]
 
 [project.scripts]
 ati = "agent_traffic_intelligence.cli:main"
