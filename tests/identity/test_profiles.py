@@ -37,4 +37,17 @@ def test_default_standards_profile_is_pinned() -> None:
         == "draft-meunier-http-message-signatures-directory-05"
     )
     assert profile.jafar == "draft-illyes-webbotauth-jafar-00"
-    assert profile.agent_card == "draft-meunier-webbotauth-registry-02"
+    assert profile.agent_card == "draft-meunier-webbotauth-registry-03"
+
+
+def test_google_crypto_profile_separates_identity_and_directory_uri() -> None:
+    profile = provider_profile("google")
+    assert profile.crypto is not None
+    source = profile.crypto.signature_agents[0]
+    assert source.signature_agent_uri == "https://agent.bot.goog"
+    assert (
+        source.directory_uri
+        == "https://agent.bot.goog/.well-known/http-message-signatures-directory"
+    )
+    assert source.binding_scope is BindingScope.AGENT
+    assert source.subject == "Google-Agent"
