@@ -6,7 +6,8 @@ from ipaddress import ip_address, ip_network
 import pytest
 
 hypothesis = pytest.importorskip("hypothesis")
-from hypothesis import given, strategies as st  # type: ignore[import-not-found]  # noqa: E402
+from hypothesis import given  # type: ignore[import-not-found]  # noqa: E402
+from hypothesis import strategies as st  # type: ignore[import-not-found]  # noqa: E402
 
 from agent_traffic_intelligence.identity.network.ranges import (  # noqa: E402
     PublishedRange,
