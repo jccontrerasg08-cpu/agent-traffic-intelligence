@@ -12,17 +12,28 @@ from agent_traffic_intelligence.identity.models import (
 )
 from agent_traffic_intelligence.identity.network.verifier import OfficialRangeVerifier
 from agent_traffic_intelligence.identity.profiles import provider_profile
-from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
+from agent_traffic_intelligence.identity.sources.models import (
+    SourceDocument,
+    SourceType,
+)
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "identity" / "providers"
 
 
 def claim(provider: str, agent: str) -> IdentityClaim:
-    return IdentityClaim(provider=provider, agent=agent, actor_type=ActorType.AI_CRAWLER, intent="test")
+    return IdentityClaim(
+        provider=provider,
+        agent=agent,
+        actor_type=ActorType.AI_CRAWLER,
+        intent="test",
+    )
 
 
-def context(address: str | None, provenance: SourceAddressProvenance) -> VerificationContext:
+def context(
+    address: str | None,
+    provenance: SourceAddressProvenance,
+) -> VerificationContext:
     return VerificationContext(
         source_ip=address,
         source_address_provenance=provenance,
@@ -36,7 +47,12 @@ def context(address: str | None, provenance: SourceAddressProvenance) -> Verific
     )
 
 
-def document(filename: str, provider: str, uri: str, scope: BindingScope) -> SourceDocument:
+def document(
+    filename: str,
+    provider: str,
+    uri: str,
+    scope: BindingScope,
+) -> SourceDocument:
     body = (FIXTURES / filename).read_bytes()
     return SourceDocument.from_bytes(
         uri=uri,
@@ -56,7 +72,12 @@ def test_anthropic_shared_range_pass_is_provider_scope() -> None:
         context=context("2001:db8::42", SourceAddressProvenance.DIRECT_PEER),
         claim=claim("anthropic", "ClaudeBot"),
         source_profile=profile,
-        document=document("anthropic-bots.json", "anthropic", profile.uri, profile.binding_scope),
+        document=document(
+            "anthropic-bots.json",
+            "anthropic",
+            profile.uri,
+            profile.binding_scope,
+        ),
     )
     assert evidence.outcome is VerificationOutcome.PASS
     assert evidence.binding_scope is BindingScope.PROVIDER
@@ -70,7 +91,12 @@ def test_positive_only_miss_is_indeterminate() -> None:
         context=context("2001:db9::1", SourceAddressProvenance.DIRECT_PEER),
         claim=claim("anthropic", "ClaudeBot"),
         source_profile=profile,
-        document=document("anthropic-bots.json", "anthropic", profile.uri, profile.binding_scope),
+        document=document(
+            "anthropic-bots.json",
+            "anthropic",
+            profile.uri,
+            profile.binding_scope,
+        ),
     )
     assert evidence.outcome is VerificationOutcome.INDETERMINATE
 
@@ -78,10 +104,18 @@ def test_positive_only_miss_is_indeterminate() -> None:
 def test_agent_specific_range_can_bind_exact_agent() -> None:
     profile = provider_profile("perplexity").range_sources[1]
     evidence = OfficialRangeVerifier().verify(
-        context=context("203.0.113.9", SourceAddressProvenance.TRUSTED_EDGE_CLIENT),
+        context=context(
+            "203.0.113.9",
+            SourceAddressProvenance.TRUSTED_EDGE_CLIENT,
+        ),
         claim=claim("perplexity", "Perplexity-User"),
         source_profile=profile,
-        document=document("perplexity-user.json", "perplexity", profile.uri, profile.binding_scope),
+        document=document(
+            "perplexity-user.json",
+            "perplexity",
+            profile.uri,
+            profile.binding_scope,
+        ),
     )
     assert evidence.outcome is VerificationOutcome.PASS
     assert evidence.binding_scope is BindingScope.AGENT
@@ -94,7 +128,12 @@ def test_authoritative_negative_miss_is_mismatch() -> None:
         context=context("198.51.100.7", SourceAddressProvenance.DIRECT_PEER),
         claim=claim("perplexity", "Perplexity-User"),
         source_profile=profile,
-        document=document("perplexity-user.json", "perplexity", profile.uri, profile.binding_scope),
+        document=document(
+            "perplexity-user.json",
+            "perplexity",
+            profile.uri,
+            profile.binding_scope,
+        ),
     )
     assert evidence.outcome is VerificationOutcome.MISMATCH
 
@@ -102,9 +141,17 @@ def test_authoritative_negative_miss_is_mismatch() -> None:
 def test_untrusted_address_provenance_is_unavailable() -> None:
     profile = provider_profile("openai").range_sources[0]
     evidence = OfficialRangeVerifier().verify(
-        context=context("192.0.2.10", SourceAddressProvenance.FORWARDED_UNTRUSTED),
+        context=context(
+            "192.0.2.10",
+            SourceAddressProvenance.FORWARDED_UNTRUSTED,
+        ),
         claim=claim("openai", "GPTBot"),
         source_profile=profile,
-        document=document("openai-gptbot.json", "openai", profile.uri, profile.binding_scope),
+        document=document(
+            "openai-gptbot.json",
+            "openai",
+            profile.uri,
+            profile.binding_scope,
+        ),
     )
     assert evidence.outcome is VerificationOutcome.UNAVAILABLE
