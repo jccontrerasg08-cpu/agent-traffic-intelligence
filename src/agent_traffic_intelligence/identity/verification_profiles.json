@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-08-14",
+  "providers": [
+    {
+      "provider": "openai",
+      "range_sources": [
+        {
+          "uri": "https://openai.com/gptbot.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "agent",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "GPTBot"
+        },
+        {
+          "uri": "https://openai.com/searchbot.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "agent",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "OAI-SearchBot"
+        },
+        {
+          "uri": "https://openai.com/adsbot.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "agent",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "OAI-AdsBot"
+        }
+      ],
+      "fcrdns": null,
+      "crypto": null
+    },
+    {
+      "provider": "google",
+      "range_sources": [
+        {
+          "uri": "https://developers.google.com/crawling/ipranges/common-crawlers.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "category": "common-crawlers"
+        },
+        {
+          "uri": "https://developers.google.com/crawling/ipranges/special-crawlers.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "category": "special-crawlers"
+        },
+        {
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-fetchers.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "category": "user-triggered-fetchers"
+        },
+        {
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-fetchers-google.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "category": "user-triggered-fetchers-google"
+        },
+        {
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-agents.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "category": "user-triggered-agents"
+        }
+      ],
+      "fcrdns": {
+        "allowed_suffixes": [
+          "googlebot.com",
+          "geo.googlebot.com",
+          "google.com",
+          "gae.googleusercontent.com"
+        ],
+        "binding_scope": "provider",
+        "reviewed_on": "2026-08-14"
+      },
+      "crypto": {
+        "signature_agents": ["https://agent.bot.goog"],
+        "reviewed_on": "2026-08-14"
+      }
+    },
+    {
+      "provider": "perplexity",
+      "range_sources": [
+        {
+          "uri": "https://www.perplexity.ai/perplexitybot.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "agent",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "subject": "PerplexityBot"
+        },
+        {
+          "uri": "https://www.perplexity.ai/perplexity-user.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "agent",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "subject": "Perplexity-User"
+        }
+      ],
+      "fcrdns": null,
+      "crypto": null
+    },
+    {
+      "provider": "anthropic",
+      "range_sources": [
+        {
+          "uri": "https://claude.com/crawling/bots.json",
+          "format_profile": "prefixes-v1",
+          "binding_scope": "provider",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "category": "anthropic-crawlers"
+        }
+      ],
+      "fcrdns": null,
+      "crypto": null
+    },
+    {
+      "provider": "cloudflare",
+      "range_sources": [],
+      "fcrdns": null,
+      "crypto": {
+        "signature_agents": [],
+        "reviewed_on": "2026-08-14"
+      }
+    }
+  ]
+}
