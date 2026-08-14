@@ -68,6 +68,7 @@ class WebBotAuthVerifier:
         directory: KeyDirectory,
         directory_uri: str,
         binding_scope: BindingScope,
+        signature_agent_uri: str | None = None,
         trust_policy: SourceTrustPolicy,
         subject: str | None = None,
         rfc_verifier: RfcVerifier | None = None,
@@ -77,6 +78,9 @@ class WebBotAuthVerifier:
     ) -> None:
         self._directory = directory
         self._directory_uri = canonicalize_source_uri(directory_uri)
+        self._signature_agent_uri = canonicalize_source_uri(
+            signature_agent_uri or directory_uri
+        )
         self._binding_scope = binding_scope
         self._subject = subject
         self._trust_policy = trust_policy
@@ -201,10 +205,10 @@ class WebBotAuthVerifier:
                     claim,
                     "signed Signature-Agent URI is not an acceptable HTTPS URI",
                 )
-            if referenced_uri != self._directory_uri:
+            if referenced_uri != self._signature_agent_uri:
                 return self._mismatch(
                     claim,
-                    "signed Signature-Agent URI does not match the trusted key directory",
+                    "signed Signature-Agent URI does not match the registered agent identity",
                 )
             signature_agent_bound = True
             legacy_signature_agent = selected.legacy
@@ -306,9 +310,13 @@ class WebBotAuthVerifier:
             "rsa-pss-sha512": {None, "PS512", "rsa-pss-sha512"},
             "rsa-v1_5-sha256": {None, "RS256", "rsa-v1_5-sha256"},
         }
-        if verified_algorithm == "ed25519" and not (kty == "OKP" and crv == "Ed25519"):
+        if verified_algorithm == "ed25519" and not (
+            kty == "OKP" and crv == "Ed25519"
+        ):
             return False
-        if verified_algorithm == "ecdsa-p256-sha256" and not (kty == "EC" and crv == "P-256"):
+        if verified_algorithm == "ecdsa-p256-sha256" and not (
+            kty == "EC" and crv == "P-256"
+        ):
             return False
         if verified_algorithm.startswith("rsa-") and kty != "RSA":
             return False
