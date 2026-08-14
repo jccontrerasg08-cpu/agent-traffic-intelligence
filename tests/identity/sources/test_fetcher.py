@@ -76,7 +76,16 @@ def test_rejects_non_https_and_embedded_credentials_before_network() -> None:
 
 @pytest.mark.parametrize(
     "blocked",
-    ["127.0.0.1", "10.0.0.1", "169.254.1.1", "224.0.0.1", "0.0.0.0", "::1", "fe80::1", "ff02::1"],
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "169.254.1.1",
+        "224.0.0.1",
+        "0.0.0.0",
+        "::1",
+        "fe80::1",
+        "ff02::1",
+    ],
 )
 def test_rejects_non_public_destination_addresses(blocked: str) -> None:
     fetcher = SafeFetcher(
@@ -88,8 +97,15 @@ def test_rejects_non_public_destination_addresses(blocked: str) -> None:
 
 
 def test_redirect_is_re_resolved_and_private_target_is_rejected() -> None:
-    resolver = FakeResolver({"public.example": ("93.184.216.34",), "internal.example": ("10.0.0.5",)})
-    transport = FakeTransport([response(302, Location="https://internal.example/secrets")])
+    resolver = FakeResolver(
+        {
+            "public.example": ("93.184.216.34",),
+            "internal.example": ("10.0.0.5",),
+        }
+    )
+    transport = FakeTransport(
+        [response(302, Location="https://internal.example/secrets")]
+    )
     fetcher = SafeFetcher(resolver=resolver, transport=transport)
     with pytest.raises(FetchSecurityError, match="public"):
         fetcher.fetch("https://public.example/start")
@@ -99,35 +115,48 @@ def test_redirect_is_re_resolved_and_private_target_is_rejected() -> None:
 
 def test_rejects_more_than_three_redirects() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34",)})
-    transport = FakeTransport([
-        response(302, Location="/1"),
-        response(302, Location="/2"),
-        response(302, Location="/3"),
-        response(302, Location="/4"),
-    ])
+    transport = FakeTransport(
+        [
+            response(302, Location="/1"),
+            response(302, Location="/2"),
+            response(302, Location="/3"),
+            response(302, Location="/4"),
+        ]
+    )
     with pytest.raises(FetchProtocolError, match="redirect"):
-        SafeFetcher(resolver=resolver, transport=transport).fetch("https://example.com/start")
+        SafeFetcher(resolver=resolver, transport=transport).fetch(
+            "https://example.com/start"
+        )
 
 
 def test_rejects_oversized_body_and_wrong_media_type() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34",)})
     oversized = FakeTransport([response(body=b"x" * (2 * 1024 * 1024 + 1))])
     with pytest.raises(FetchProtocolError, match="2 MiB"):
-        SafeFetcher(resolver=resolver, transport=oversized).fetch("https://example.com/data.json")
+        SafeFetcher(resolver=resolver, transport=oversized).fetch(
+            "https://example.com/data.json"
+        )
     wrong_type = FakeTransport([response(content_type="text/html")])
     with pytest.raises(FetchProtocolError, match="media type"):
-        SafeFetcher(resolver=resolver, transport=wrong_type).fetch("https://example.com/data.json")
+        SafeFetcher(resolver=resolver, transport=wrong_type).fetch(
+            "https://example.com/data.json"
+        )
 
 
 def test_conditional_headers_and_304_are_preserved() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34",)})
-    transport = FakeTransport([
-        TransportResponse(
-            status=304,
-            headers={"ETag": '"v2"', "Last-Modified": "Thu, 13 Aug 2026 12:00:00 GMT"},
-            body=b"",
-        )
-    ])
+    transport = FakeTransport(
+        [
+            TransportResponse(
+                status=304,
+                headers={
+                    "ETag": '"v2"',
+                    "Last-Modified": "Thu, 13 Aug 2026 12:00:00 GMT",
+                },
+                body=b"",
+            )
+        ]
+    )
     result = SafeFetcher(resolver=resolver, transport=transport).fetch(
         "https://example.com/data.json",
         etag='"v1"',
@@ -142,6 +171,8 @@ def test_conditional_headers_and_304_are_preserved() -> None:
 def test_success_passes_only_validated_addresses_to_transport() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34", "8.8.8.8")})
     transport = FakeTransport([response(ETag='"v1"')])
-    result = SafeFetcher(resolver=resolver, transport=transport).fetch("https://example.com/data.json")
+    result = SafeFetcher(resolver=resolver, transport=transport).fetch(
+        "https://example.com/data.json"
+    )
     assert transport.calls[0].allowed_addresses == ("8.8.8.8", "93.184.216.34")
     assert result.body == b"{}"
