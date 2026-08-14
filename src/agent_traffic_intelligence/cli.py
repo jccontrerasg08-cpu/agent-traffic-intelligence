@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Sequence
-from contextlib import nullcontext
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TextIO
 
@@ -57,31 +57,28 @@ def _analyze(args: argparse.Namespace) -> int:
     processed = 0
 
     input_stream, should_close_input = _open_input(args.input)
-    output_context = (
-        Path(args.output).open("w", encoding="utf-8")
-        if args.output
-        else nullcontext(sys.stdout)
-    )
-
-    try:
-        with output_context as output_stream:
-            try:
-                for event in iter_jsonl(input_stream, hash_key=hash_key, source=args.source):
-                    detection = detector.detect(event)
-                    output_stream.write(
-                        json.dumps(detection.to_dict(), separators=(",", ":"), sort_keys=True)
-                        + "\n"
-                    )
-                    processed += 1
-            except ParseError as exc:
-                print(
-                    f"error: {exc}. If the input contains raw client IPs, set {args.hash_key_env}.",
-                    file=sys.stderr,
-                )
-                return 2
-    finally:
+    with ExitStack() as stack:
         if should_close_input:
-            input_stream.close()
+            stack.callback(input_stream.close)
+        output_stream = (
+            stack.enter_context(Path(args.output).open("w", encoding="utf-8"))
+            if args.output
+            else sys.stdout
+        )
+        try:
+            for event in iter_jsonl(input_stream, hash_key=hash_key, source=args.source):
+                detection = detector.detect(event)
+                output_stream.write(
+                    json.dumps(detection.to_dict(), separators=(",", ":"), sort_keys=True)
+                    + "\n"
+                )
+                processed += 1
+        except ParseError as exc:
+            print(
+                f"error: {exc}. If the input contains raw client IPs, set {args.hash_key_env}.",
+                file=sys.stderr,
+            )
+            return 2
 
     print(f"processed={processed}", file=sys.stderr)
     return 0

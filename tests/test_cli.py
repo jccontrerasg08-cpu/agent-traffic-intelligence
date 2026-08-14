@@ -86,7 +86,8 @@ def test_explain_pretty_prints_evidence(tmp_path, monkeypatch, capsys) -> None:
     assert main(["analyze", str(input_path), "--output", str(output_path)]) == 0
     capsys.readouterr()
 
-    code = main(["explain", str(output_path), "--request-id", json.loads(output_path.read_text().splitlines()[0])["request_id"]])
+    request_id = json.loads(output_path.read_text().splitlines()[0])["request_id"]
+    code = main(["explain", str(output_path), "--request-id", request_id])
 
     assert code == 0
     output = capsys.readouterr().out

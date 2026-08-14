@@ -24,7 +24,7 @@ class RegistryEntry:
     supported_until: str | None = None
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "RegistryEntry":
+    def from_dict(cls, value: dict[str, Any]) -> RegistryEntry:
         return cls(
             token=str(value["token"]),
             provider=str(value["provider"]),
@@ -57,7 +57,7 @@ class AgentRegistry:
         return self._entries
 
     @classmethod
-    def from_path(cls, path: Path) -> "AgentRegistry":
+    def from_path(cls, path: Path) -> AgentRegistry:
         raw = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or raw.get("schema_version") != 1:
             raise ValueError("unsupported registry schema")
@@ -68,7 +68,7 @@ class AgentRegistry:
         return cls(entries)
 
     @classmethod
-    def default(cls) -> "AgentRegistry":
+    def default(cls) -> AgentRegistry:
         return cls.from_path(Path(__file__).with_name("agents.json"))
 
     def match_entry(self, user_agent: str | None) -> RegistryEntry | None:

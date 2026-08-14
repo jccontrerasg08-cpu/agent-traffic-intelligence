@@ -7,6 +7,7 @@ import statistics
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
 from datetime import timedelta
+from itertools import pairwise
 
 from agent_traffic_intelligence.features.request import is_asset_path
 from agent_traffic_intelligence.models import RequestEvent
@@ -54,7 +55,7 @@ class SessionFeatureState:
         duration = max(0.0, (last - first).total_seconds())
         intervals = [
             max(0.0, (current.timestamp - previous.timestamp).total_seconds())
-            for previous, current in zip(events, events[1:], strict=False)
+            for previous, current in pairwise(events)
         ]
         mean_interval = statistics.fmean(intervals) if intervals else 0.0
         if len(intervals) >= 2 and mean_interval > 0:

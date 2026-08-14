@@ -38,7 +38,9 @@ def identity_evidence(event: RequestEvent, entry: RegistryEntry | None) -> list[
             Evidence(
                 code="generic-automation-ua",
                 source="user-agent",
-                description="User-Agent contains a common automation token but has no verified identity.",
+                description=(
+                    "User-Agent contains a common automation token but has no verified identity."
+                ),
                 strength=1.0,
                 score_deltas={"automation": 1.3, "ai": 0.0, "identity": 0.0, "risk": 0.1},
             )
@@ -60,7 +62,9 @@ def behavior_evidence(features: Mapping[str, float | int | bool | str | None]) -
             Evidence(
                 code="html-heavy-session",
                 source="behavior",
-                description="Session requested almost no static/browser assets across multiple requests.",
+                description=(
+                    "Session requested almost no static/browser assets across multiple requests."
+                ),
                 strength=1.0,
                 score_deltas={"automation": 1.25, "ai": 0.0, "identity": 0.0, "risk": 0.15},
             )
@@ -73,7 +77,9 @@ def behavior_evidence(features: Mapping[str, float | int | bool | str | None]) -
             Evidence(
                 code="regular-request-cadence",
                 source="behavior",
-                description="Inter-request timing is unusually regular for the observed session window.",
+                description=(
+                    "Inter-request timing is unusually regular for the observed session window."
+                ),
                 strength=1.0,
                 score_deltas={"automation": 0.8, "ai": 0.0, "identity": 0.0, "risk": 0.1},
             )
@@ -112,7 +118,9 @@ def behavior_evidence(features: Mapping[str, float | int | bool | str | None]) -
             Evidence(
                 code="browser-context-present",
                 source="behavior",
-                description="Session exhibits multiple normal browser context and asset-loading signals.",
+                description=(
+                    "Session exhibits multiple normal browser context and asset-loading signals."
+                ),
                 strength=1.0,
                 score_deltas={"automation": -0.5, "ai": 0.0, "identity": 0.0, "risk": -0.2},
             )
