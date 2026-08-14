@@ -7,7 +7,7 @@ from agent_traffic_intelligence.identity.crypto.signature_agent import (
     StructuredFieldSignatureAgentParser,
 )
 
-pytest.importorskip("http_sf")
+pytest.importorskip("http_message_signatures")
 
 
 def test_parses_structured_dictionary_and_parameters() -> None:
