@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from agent_traffic_intelligence.identity.models import SourceAddressProvenance
 
@@ -25,3 +26,6 @@ class VerificationContext:
     def __post_init__(self) -> None:
         if not self.method:
             raise ValueError("method must not be empty")
+        object.__setattr__(
+            self, "covered_headers", MappingProxyType(dict(self.covered_headers))
+        )
