@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/agent-traffic-intelligence/request-event.schema.json",
+  "title": "ATI RequestEvent V0",
+  "type": "object",
+  "required": ["timestamp", "request_id", "client_id", "method", "path", "status", "bytes_sent", "http_version", "source"],
+  "properties": {
+    "timestamp": {"type": "string", "format": "date-time"},
+    "request_id": {"type": "string", "minLength": 1},
+    "client_id": {"type": "string", "minLength": 1},
+    "method": {"type": "string", "minLength": 1},
+    "path": {"type": "string", "pattern": "^/"},
+    "status": {"type": "integer", "minimum": 100, "maximum": 599},
+    "bytes_sent": {"type": "integer", "minimum": 0},
+    "http_version": {"type": "string"},
+    "user_agent": {"type": ["string", "null"]},
+    "has_referer": {"type": "boolean"},
+    "has_cookie": {"type": "boolean"},
+    "has_accept_language": {"type": "boolean"},
+    "ja4": {"type": ["string", "null"]},
+    "source": {"type": "string"}
+  },
+  "additionalProperties": false
+}

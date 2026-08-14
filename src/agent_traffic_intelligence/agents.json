@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "last_verified": "2026-08-14",
+  "entries": [
+    {
+      "token": "GPTBot",
+      "provider": "openai",
+      "agent": "GPTBot",
+      "actor_type": "ai_crawler",
+      "intent": "model-development",
+      "ai_related": true,
+      "official_source": "https://help.openai.com/en/articles/12627856-publishers-and-developers-faq",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "OAI-SearchBot",
+      "provider": "openai",
+      "agent": "OAI-SearchBot",
+      "actor_type": "ai_crawler",
+      "intent": "search-indexing",
+      "ai_related": true,
+      "official_source": "https://help.openai.com/en/articles/12627856-publishers-and-developers-faq",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "OAI-AdsBot",
+      "provider": "openai",
+      "agent": "OAI-AdsBot",
+      "actor_type": "service_crawler",
+      "intent": "ad-landing-page-validation",
+      "ai_related": false,
+      "official_source": "https://help.openai.com/en/articles/20001243-advertiser-guidance-for-allowing-openai-web-crawlers",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "ClaudeBot",
+      "provider": "anthropic",
+      "agent": "ClaudeBot",
+      "actor_type": "ai_crawler",
+      "intent": "model-development",
+      "ai_related": true,
+      "official_source": "https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Claude-SearchBot",
+      "provider": "anthropic",
+      "agent": "Claude-SearchBot",
+      "actor_type": "ai_crawler",
+      "intent": "search-indexing",
+      "ai_related": true,
+      "official_source": "https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Claude-User",
+      "provider": "anthropic",
+      "agent": "Claude-User",
+      "actor_type": "ai_user_agent",
+      "intent": "user-triggered-fetch",
+      "ai_related": true,
+      "official_source": "https://support.anthropic.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "PerplexityBot",
+      "provider": "perplexity",
+      "agent": "PerplexityBot",
+      "actor_type": "ai_crawler",
+      "intent": "search-indexing",
+      "ai_related": true,
+      "official_source": "https://docs.perplexity.ai/docs/resources/perplexity-crawlers",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Perplexity-User",
+      "provider": "perplexity",
+      "agent": "Perplexity-User",
+      "actor_type": "ai_user_agent",
+      "intent": "user-triggered-fetch",
+      "ai_related": true,
+      "official_source": "https://docs.perplexity.ai/docs/resources/perplexity-crawlers",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Google-GeminiNotebook",
+      "provider": "google",
+      "agent": "Google-GeminiNotebook",
+      "actor_type": "ai_user_agent",
+      "intent": "user-triggered-fetch",
+      "ai_related": true,
+      "official_source": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Google-NotebookLM",
+      "provider": "google",
+      "agent": "Google-NotebookLM",
+      "actor_type": "ai_user_agent",
+      "intent": "user-triggered-fetch",
+      "ai_related": true,
+      "deprecated": true,
+      "supported_until": "2026-08",
+      "official_source": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers",
+      "last_verified": "2026-08-14"
+    },
+    {
+      "token": "Google-Agent",
+      "provider": "google",
+      "agent": "Google-Agent",
+      "actor_type": "ai_user_agent",
+      "intent": "user-triggered-agent-navigation",
+      "ai_related": true,
+      "official_source": "https://developers.google.com/crawling/docs/crawlers-fetchers/google-user-triggered-fetchers",
+      "last_verified": "2026-08-14"
+    }
+  ]
+}

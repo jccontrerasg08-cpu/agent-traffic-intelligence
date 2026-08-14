@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-traffic-intelligence"
+version = "0.1.0.dev0"
+description = "Self-hosted, explainable intelligence for automated and AI-originated web traffic."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Juan Carlos Contreras"}]
+keywords = ["bot-detection", "ai-agents", "ai-crawlers", "web-security", "traffic-analysis"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13",
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.9",
+]
+
+[project.scripts]
+ati = "agent_traffic_intelligence.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["agent_traffic_intelligence"]
+
+[tool.coverage.run]
+branch = true
+source = ["agent_traffic_intelligence"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 85
+
+[tool.setuptools.package-data]
+agent_traffic_intelligence = ["agents.json"]

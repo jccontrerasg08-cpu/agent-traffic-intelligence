@@ -1,0 +1,2 @@
+{"time_iso8601":"2026-08-14T08:00:00+00:00","remote_addr":"203.0.113.42","request_method":"GET","request_uri":"/docs","status":200,"body_bytes_sent":1200,"server_protocol":"HTTP/2","http_user_agent":"Mozilla/5.0 compatible; GPTBot/1.0","has_referer":false,"has_cookie":false,"has_accept_language":false}
+{"time_iso8601":"2026-08-14T08:00:05+00:00","remote_addr":"198.51.100.20","request_method":"GET","request_uri":"/","status":200,"body_bytes_sent":2400,"server_protocol":"HTTP/2","http_user_agent":"Mozilla/5.0","has_referer":true,"has_cookie":true,"has_accept_language":true}

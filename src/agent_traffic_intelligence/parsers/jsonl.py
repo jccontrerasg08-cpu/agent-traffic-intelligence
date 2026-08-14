@@ -1,0 +1,148 @@
+"""Privacy-safe JSONL access-log parser."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Iterable, Iterator, Mapping
+from datetime import datetime
+from typing import Any, TextIO
+from urllib.parse import urlsplit
+
+from agent_traffic_intelligence.models import RequestEvent
+
+
+class ParseError(ValueError):
+    """Raised when an input record cannot be safely normalized."""
+
+
+def _required(record: Mapping[str, Any], *names: str) -> Any:
+    for name in names:
+        value = record.get(name)
+        if value is not None and value != "":
+            return value
+    raise ParseError(f"missing required field; expected one of: {', '.join(names)}")
+
+
+def _parse_timestamp(value: Any) -> datetime:
+    if not isinstance(value, str):
+        raise ParseError("timestamp must be an ISO-8601 string")
+    raw = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ParseError("timestamp must be valid ISO-8601") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ParseError("timestamp must be timezone-aware")
+    return parsed
+
+
+def _safe_path(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        raise ParseError("request path must be a non-empty string")
+    split = urlsplit(value)
+    path = split.path or "/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return path
+
+
+def pseudonymize_client(raw_address: str, hash_key: bytes) -> str:
+    """Create a stable keyed pseudonym without retaining the raw network address."""
+
+    if not hash_key:
+        raise ParseError("a non-empty hash key is required for raw client addresses")
+    digest = hashlib.blake2b(
+        raw_address.encode("utf-8"), key=hash_key, digest_size=16, person=b"ati-client-v0"
+    ).hexdigest()
+    return f"blake2b:{digest}"
+
+
+def _request_id(
+    timestamp: datetime, client_id: str, method: str, path: str, status: int
+) -> str:
+    payload = "\x1f".join(
+        (timestamp.isoformat(), client_id, method.upper(), path, str(status))
+    ).encode("utf-8")
+    return "req:" + hashlib.blake2b(payload, digest_size=12, person=b"ati-req-v0").hexdigest()
+
+
+def normalize_record(
+    record: Mapping[str, Any], *, hash_key: bytes | None, source: str = "jsonl"
+) -> RequestEvent:
+    """Normalize an access-log record while discarding sensitive values."""
+
+    timestamp = _parse_timestamp(_required(record, "timestamp", "time_iso8601", "time"))
+    method = str(_required(record, "method", "request_method")).upper()
+    path = _safe_path(_required(record, "path", "request_uri", "uri"))
+
+    try:
+        status = int(_required(record, "status"))
+        bytes_sent = int(record.get("bytes_sent", record.get("body_bytes_sent", 0)) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ParseError("status and bytes fields must be integers") from exc
+
+    supplied_client = record.get("client_id")
+    if isinstance(supplied_client, str) and supplied_client:
+        client_id = supplied_client
+    else:
+        raw_address = record.get("remote_addr", record.get("client_ip"))
+        if not isinstance(raw_address, str) or not raw_address:
+            raise ParseError("record needs client_id or a raw client address")
+        if hash_key is None:
+            raise ParseError("a hash key is required when a raw client address is present")
+        client_id = pseudonymize_client(raw_address, hash_key)
+
+    user_agent_raw = record.get("user_agent", record.get("http_user_agent"))
+    user_agent = str(user_agent_raw) if user_agent_raw not in (None, "") else None
+    http_version = str(
+        record.get("http_version", record.get("server_protocol", "unknown")) or "unknown"
+    )
+    ja4_raw = record.get("ja4")
+    ja4 = str(ja4_raw) if ja4_raw not in (None, "") else None
+
+    request_id_raw = record.get("request_id")
+    request_id = (
+        str(request_id_raw)
+        if request_id_raw not in (None, "")
+        else _request_id(timestamp, client_id, method, path, status)
+    )
+
+    return RequestEvent(
+        timestamp=timestamp,
+        request_id=request_id,
+        client_id=client_id,
+        method=method,
+        path=path,
+        status=status,
+        bytes_sent=bytes_sent,
+        http_version=http_version,
+        user_agent=user_agent,
+        has_referer=bool(record.get("has_referer", record.get("http_referer"))),
+        has_cookie=bool(record.get("has_cookie", record.get("http_cookie"))),
+        has_accept_language=bool(
+            record.get("has_accept_language", record.get("http_accept_language"))
+        ),
+        ja4=ja4,
+        source=source,
+    )
+
+
+def iter_jsonl(
+    stream: TextIO | Iterable[str], *, hash_key: bytes | None, source: str = "jsonl"
+) -> Iterator[RequestEvent]:
+    """Yield normalized events from line-delimited JSON input."""
+
+    for line_number, raw_line in enumerate(stream, start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            payload = json.loads(raw_line)
+        except json.JSONDecodeError as exc:
+            raise ParseError(f"line {line_number}: invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ParseError(f"line {line_number}: expected a JSON object")
+        try:
+            yield normalize_record(payload, hash_key=hash_key, source=source)
+        except ParseError as exc:
+            raise ParseError(f"line {line_number}: {exc}") from exc
