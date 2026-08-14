@@ -23,14 +23,6 @@
       "reviewed_on": "2026-08-14",
       "sha256": "24fc0914c342773f1213b501d580e298652c74265ada29e5110eccb9f2bc2bfb",
       "synthetic": true
-    },
-    {
-      "file": "anthropic-bots.json",
-      "format_profile": "prefixes-v1",
-      "official_uri": "https://claude.com/crawling/bots.json",
-      "reviewed_on": "2026-08-14",
-      "sha256": "1347a189c4a04f30629fee76720befbefc53fc239c0edc7b1156de0ada703de6",
-      "synthetic": true
     }
   ],
   "schema_version": 1
