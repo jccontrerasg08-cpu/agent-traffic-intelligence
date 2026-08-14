@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 from agent_traffic_intelligence.identity.sources.manifest import (
@@ -38,10 +39,8 @@ class SourceCache:
                     os.fsync(stream.fileno())
                 os.replace(temp_name, blob_path)
             except BaseException:
-                try:
+                with suppress(FileNotFoundError):
                     os.unlink(temp_name)
-                except FileNotFoundError:
-                    pass
                 raise
 
         manifest = load_manifest(self.manifest_path)
