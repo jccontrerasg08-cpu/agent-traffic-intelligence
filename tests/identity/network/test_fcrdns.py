@@ -3,14 +3,28 @@ from __future__ import annotations
 import socket
 
 from agent_traffic_intelligence.identity.context import VerificationContext
-from agent_traffic_intelligence.identity.models import BindingScope, SourceAddressProvenance, VerificationOutcome
+from agent_traffic_intelligence.identity.models import (
+    BindingScope,
+    SourceAddressProvenance,
+    VerificationOutcome,
+)
 from agent_traffic_intelligence.identity.network.fcrdns import FcrdnsVerifier
-from agent_traffic_intelligence.identity.profiles import FcrdnsProfile, provider_profile
+from agent_traffic_intelligence.identity.profiles import (
+    FcrdnsProfile,
+    provider_profile,
+)
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
 
 class FakeResolver:
-    def __init__(self, *, reverse_result: tuple[str, ...] = (), forward_result: tuple[str, ...] = (), reverse_error: BaseException | None = None, forward_error: BaseException | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        reverse_result: tuple[str, ...] = (),
+        forward_result: tuple[str, ...] = (),
+        reverse_error: BaseException | None = None,
+        forward_error: BaseException | None = None,
+    ) -> None:
         self.reverse_result = reverse_result
         self.forward_result = forward_result
         self.reverse_error = reverse_error
@@ -42,7 +56,12 @@ def context(address: str | None) -> VerificationContext:
 
 
 def claim() -> IdentityClaim:
-    return IdentityClaim(provider="google", agent="Googlebot", actor_type=ActorType.SEARCH_CRAWLER, intent="search-indexing")
+    return IdentityClaim(
+        provider="google",
+        agent="Googlebot",
+        actor_type=ActorType.SEARCH_CRAWLER,
+        intent="search-indexing",
+    )
 
 
 def google_policy() -> FcrdnsProfile:
@@ -52,8 +71,15 @@ def google_policy() -> FcrdnsProfile:
 
 
 def test_reverse_and_forward_confirmation_passes() -> None:
-    resolver = FakeResolver(reverse_result=("crawl-203-0-113-7.googlebot.com.",), forward_result=("203.0.113.7",))
-    evidence = FcrdnsVerifier(resolver).verify(context=context("203.0.113.7"), claim=claim(), profile=google_policy())
+    resolver = FakeResolver(
+        reverse_result=("crawl-203-0-113-7.googlebot.com.",),
+        forward_result=("203.0.113.7",),
+    )
+    evidence = FcrdnsVerifier(resolver).verify(
+        context=context("203.0.113.7"),
+        claim=claim(),
+        profile=google_policy(),
+    )
     assert evidence.outcome is VerificationOutcome.PASS
     assert evidence.binding_scope is BindingScope.PROVIDER
     assert evidence.details["confirmed"] is True
@@ -61,21 +87,45 @@ def test_reverse_and_forward_confirmation_passes() -> None:
 
 
 def test_ptr_only_spoof_with_suffix_in_middle_is_mismatch() -> None:
-    evidence = FcrdnsVerifier(FakeResolver(reverse_result=("crawler.googlebot.com.attacker.example",), forward_result=("203.0.113.7",))).verify(context=context("203.0.113.7"), claim=claim(), profile=google_policy())
+    resolver = FakeResolver(
+        reverse_result=("crawler.googlebot.com.attacker.example",),
+        forward_result=("203.0.113.7",),
+    )
+    evidence = FcrdnsVerifier(resolver).verify(
+        context=context("203.0.113.7"),
+        claim=claim(),
+        profile=google_policy(),
+    )
     assert evidence.outcome is VerificationOutcome.MISMATCH
 
 
 def test_forward_mismatch_is_mismatch() -> None:
-    evidence = FcrdnsVerifier(FakeResolver(reverse_result=("crawl.googlebot.com",), forward_result=("198.51.100.11",))).verify(context=context("203.0.113.7"), claim=claim(), profile=google_policy())
+    resolver = FakeResolver(
+        reverse_result=("crawl.googlebot.com",),
+        forward_result=("198.51.100.11",),
+    )
+    evidence = FcrdnsVerifier(resolver).verify(
+        context=context("203.0.113.7"),
+        claim=claim(),
+        profile=google_policy(),
+    )
     assert evidence.outcome is VerificationOutcome.MISMATCH
 
 
 def test_dns_timeout_and_nxdomain_are_unavailable() -> None:
     for error in (TimeoutError("resolver timeout"), socket.herror("not found")):
-        evidence = FcrdnsVerifier(FakeResolver(reverse_error=error)).verify(context=context("203.0.113.7"), claim=claim(), profile=google_policy())
+        evidence = FcrdnsVerifier(FakeResolver(reverse_error=error)).verify(
+            context=context("203.0.113.7"),
+            claim=claim(),
+            profile=google_policy(),
+        )
         assert evidence.outcome is VerificationOutcome.UNAVAILABLE
 
 
 def test_missing_provider_dns_policy_is_unavailable() -> None:
-    evidence = FcrdnsVerifier(FakeResolver()).verify(context=context("203.0.113.7"), claim=claim(), profile=None)
+    evidence = FcrdnsVerifier(FakeResolver()).verify(
+        context=context("203.0.113.7"),
+        claim=claim(),
+        profile=None,
+    )
     assert evidence.outcome is VerificationOutcome.UNAVAILABLE
