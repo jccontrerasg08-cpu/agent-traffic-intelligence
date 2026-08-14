@@ -38,8 +38,8 @@ class SourceTrustPolicy:
             for source in profile.range_sources:
                 uris.add(canonicalize_source_uri(source.uri))
             if profile.crypto is not None:
-                for uri in profile.crypto.signature_agents:
-                    uris.add(canonicalize_source_uri(uri))
+                for source in profile.crypto.signature_agents:
+                    uris.add(canonicalize_source_uri(source.directory_uri))
         return cls(frozenset(uris))
 
     def allows(self, uri: str) -> bool:
