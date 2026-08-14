@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Any, TextIO
 from urllib.parse import urlsplit
 
+from agent_traffic_intelligence.identity.context import VerificationContext
+from agent_traffic_intelligence.identity.models import SourceAddressProvenance
 from agent_traffic_intelligence.models import RequestEvent
 
 
@@ -144,5 +146,101 @@ def iter_jsonl(
             raise ParseError(f"line {line_number}: expected a JSON object")
         try:
             yield normalize_record(payload, hash_key=hash_key, source=source)
+        except ParseError as exc:
+            raise ParseError(f"line {line_number}: {exc}") from exc
+
+
+_SAFE_CONTEXT_HEADERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("content-digest", ("content_digest", "http_content_digest")),
+    ("digest", ("digest", "http_digest")),
+    ("content-type", ("content_type", "http_content_type")),
+    ("date", ("date", "http_date")),
+    ("accept", ("accept", "http_accept")),
+    ("accept-language", ("accept_language", "http_accept_language")),
+    ("user-agent", ("user_agent", "http_user_agent")),
+)
+
+
+def _optional_string(record: Mapping[str, Any], *names: str) -> str | None:
+    for name in names:
+        value = record.get(name)
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+def _ephemeral_source_address(
+    record: Mapping[str, Any],
+) -> tuple[str | None, SourceAddressProvenance]:
+    raw_address = _optional_string(record, "remote_addr", "client_ip")
+    if raw_address is None:
+        return None, SourceAddressProvenance.UNKNOWN
+    return raw_address, SourceAddressProvenance.DIRECT_PEER
+
+
+def _ephemeral_target_uri(record: Mapping[str, Any]) -> str | None:
+    explicit = _optional_string(record, "target_uri")
+    if explicit is not None:
+        return explicit
+    authority = _optional_string(record, "authority", "host", "http_host", "server_name")
+    if authority is None:
+        return None
+    raw_target = _optional_string(record, "request_uri", "uri", "path")
+    if raw_target is None:
+        return None
+    if raw_target.startswith("http://") or raw_target.startswith("https://"):
+        return raw_target
+    if not raw_target.startswith("/"):
+        raw_target = f"/{raw_target}"
+    scheme = _optional_string(record, "scheme") or "https"
+    return f"{scheme}://{authority}{raw_target}"
+
+
+def _safe_ephemeral_headers(record: Mapping[str, Any]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for canonical_name, aliases in _SAFE_CONTEXT_HEADERS:
+        value = _optional_string(record, *aliases)
+        if value is not None:
+            headers[canonical_name] = value
+    return headers
+
+
+def normalize_record_with_context(
+    record: Mapping[str, Any], *, hash_key: bytes | None, source: str = "jsonl"
+) -> tuple[RequestEvent, VerificationContext]:
+    """Normalize a record and return a separate non-serializable verification context."""
+
+    event = normalize_record(record, hash_key=hash_key, source=source)
+    source_ip, provenance = _ephemeral_source_address(record)
+    context = VerificationContext(
+        source_ip=source_ip,
+        source_address_provenance=provenance,
+        authority=_optional_string(record, "authority", "host", "http_host", "server_name"),
+        method=event.method,
+        target_uri=_ephemeral_target_uri(record),
+        signature=_optional_string(record, "signature", "http_signature"),
+        signature_input=_optional_string(record, "signature_input", "http_signature_input"),
+        signature_agent=_optional_string(record, "signature_agent", "http_signature_agent"),
+        covered_headers=_safe_ephemeral_headers(record),
+    )
+    return event, context
+
+
+def iter_jsonl_with_context(
+    stream: TextIO | Iterable[str], *, hash_key: bytes | None, source: str = "jsonl"
+) -> Iterator[tuple[RequestEvent, VerificationContext]]:
+    """Yield normalized events paired with ephemeral verification contexts."""
+
+    for line_number, raw_line in enumerate(stream, start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            payload = json.loads(raw_line)
+        except json.JSONDecodeError as exc:
+            raise ParseError(f"line {line_number}: invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ParseError(f"line {line_number}: expected a JSON object")
+        try:
+            yield normalize_record_with_context(payload, hash_key=hash_key, source=source)
         except ParseError as exc:
             raise ParseError(f"line {line_number}: {exc}") from exc
