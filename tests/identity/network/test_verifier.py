@@ -15,7 +15,6 @@ from agent_traffic_intelligence.identity.profiles import provider_profile
 from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
-
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "identity" / "providers"
 
 
