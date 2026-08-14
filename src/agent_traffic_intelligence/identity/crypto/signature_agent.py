@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class SignatureAgentFormatError(ValueError):
@@ -71,8 +71,8 @@ class StructuredFieldSignatureAgentParser:
         return tuple(references)
 
     @staticmethod
-    def _parse_legacy(compat: object, raw: str) -> SignatureAgentReference:
-        item = getattr(compat, "Item")()
+    def _parse_legacy(compat: Any, raw: str) -> SignatureAgentReference:
+        item = compat.Item()
         try:
             item.parse(raw.encode("utf-8"))
         except Exception as exc:
