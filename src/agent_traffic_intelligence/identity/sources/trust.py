@@ -32,7 +32,7 @@ class SourceTrustPolicy:
     allowed_uris: frozenset[str]
 
     @classmethod
-    def default(cls) -> "SourceTrustPolicy":
+    def default(cls) -> SourceTrustPolicy:
         uris: set[str] = set()
         for profile in load_provider_profiles().values():
             for source in profile.range_sources:
