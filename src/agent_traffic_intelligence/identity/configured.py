@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from agent_traffic_intelligence.identity.context import VerificationContext
-from agent_traffic_intelligence.identity.crypto.directory import DirectoryFormatError, parse_key_directory
+from agent_traffic_intelligence.identity.crypto.directory import (
+    DirectoryFormatError,
+    parse_key_directory,
+)
 from agent_traffic_intelligence.identity.crypto.web_bot_auth import WebBotAuthVerifier
 from agent_traffic_intelligence.identity.manager import IdentityVerifier, VerificationManager
 from agent_traffic_intelligence.identity.models import (
@@ -59,7 +62,8 @@ class _RangeAdapter:
                 source_uri=self.profile.uri,
                 explanation="official range source is not present in the local cache",
             )
-        if document.metadata.expires_at is not None and document.metadata.expires_at < event.timestamp:
+        expires_at = document.metadata.expires_at
+        if expires_at is not None and expires_at < event.timestamp:
             return VerificationEvidence(
                 method=self.method,
                 outcome=VerificationOutcome.STALE,
@@ -70,7 +74,7 @@ class _RangeAdapter:
                 source_uri=document.metadata.uri,
                 source_profile=self.profile.format_profile,
                 retrieved_at=document.metadata.retrieved_at,
-                expires_at=document.metadata.expires_at,
+                expires_at=expires_at,
                 source_sha256=document.metadata.sha256,
                 details={"cached": True},
             )
@@ -162,7 +166,7 @@ class _CryptoAdapter:
 
 
 class ProviderAwareVerificationManager(VerificationManager):
-    """Build only claim-relevant network checks while retaining cross-provider crypto conflicts."""
+    """Run claim-relevant network checks and cross-provider crypto checks."""
 
     def __init__(
         self,
