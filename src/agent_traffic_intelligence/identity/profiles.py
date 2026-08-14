@@ -39,8 +39,17 @@ class FcrdnsProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class CryptoSourceProfile:
+    signature_agent_uri: str
+    directory_uri: str
+    binding_scope: BindingScope
+    reviewed_on: str
+    subject: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CryptoProfile:
-    signature_agents: tuple[str, ...]
+    signature_agents: tuple[CryptoSourceProfile, ...]
     reviewed_on: str
 
 
@@ -62,7 +71,9 @@ def _parse_range_source(raw: dict[str, Any]) -> RangeSourceProfile:
     return RangeSourceProfile(
         uri=_required_string(raw.get("uri"), "range source uri"),
         format_profile=_required_string(raw.get("format_profile"), "format_profile"),
-        binding_scope=BindingScope(_required_string(raw.get("binding_scope"), "binding_scope")),
+        binding_scope=BindingScope(
+            _required_string(raw.get("binding_scope"), "binding_scope")
+        ),
         negative_semantics=NegativeSemantics(
             _required_string(raw.get("negative_semantics"), "negative_semantics")
         ),
@@ -101,8 +112,31 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
     agents_raw = raw.get("signature_agents", [])
     if not isinstance(agents_raw, list):
         raise ValueError("signature_agents must be a list")
+    agents: list[CryptoSourceProfile] = []
+    for item in agents_raw:
+        if not isinstance(item, dict):
+            raise ValueError("signature_agent profile must be an object")
+        agents.append(
+            CryptoSourceProfile(
+                signature_agent_uri=_required_string(
+                    item.get("signature_agent_uri"), "signature_agent_uri"
+                ),
+                directory_uri=_required_string(
+                    item.get("directory_uri"), "directory_uri"
+                ),
+                binding_scope=BindingScope(
+                    _required_string(item.get("binding_scope"), "crypto binding_scope")
+                ),
+                reviewed_on=_required_string(
+                    item.get("reviewed_on"), "crypto source reviewed_on"
+                ),
+                subject=(
+                    item.get("subject") if isinstance(item.get("subject"), str) else None
+                ),
+            )
+        )
     return CryptoProfile(
-        signature_agents=tuple(_required_string(item, "signature_agent") for item in agents_raw),
+        signature_agents=tuple(agents),
         reviewed_on=_required_string(raw.get("reviewed_on"), "crypto reviewed_on"),
     )
 
