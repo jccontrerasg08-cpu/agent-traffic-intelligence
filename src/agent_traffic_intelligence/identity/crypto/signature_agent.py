@@ -27,22 +27,31 @@ class SignatureAgentParser(Protocol):
     def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]: ...
 
 
+def structured_fields_module() -> Any:
+    """Load the Structured Fields implementation supplied by the verification stack."""
+
+    try:
+        return importlib.import_module("http_sf.compat")
+    except ImportError:
+        try:
+            return importlib.import_module("http_message_signatures.http_sfv")
+        except ImportError as exc:
+            raise SignatureAgentUnavailable(
+                "optional Structured Fields support is not installed"
+            ) from exc
+
+
 class StructuredFieldSignatureAgentParser:
     def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
         if not raw.strip():
             raise SignatureAgentFormatError("Signature-Agent must not be empty")
-        try:
-            compat = importlib.import_module("http_sf.compat")
-        except ImportError as exc:
-            raise SignatureAgentUnavailable(
-                "optional Structured Fields dependency is not installed"
-            ) from exc
+        structured_fields = structured_fields_module()
 
-        dictionary = compat.Dictionary()
+        dictionary = structured_fields.Dictionary()
         try:
             dictionary.parse(raw.encode("utf-8"))
         except Exception:
-            return (self._parse_legacy(compat, raw),)
+            return (self._parse_legacy(structured_fields, raw),)
 
         references: list[SignatureAgentReference] = []
         for label, member in dictionary.items():
@@ -66,8 +75,8 @@ class StructuredFieldSignatureAgentParser:
         return tuple(references)
 
     @staticmethod
-    def _parse_legacy(compat: Any, raw: str) -> SignatureAgentReference:
-        item = compat.Item()
+    def _parse_legacy(structured_fields: Any, raw: str) -> SignatureAgentReference:
+        item = structured_fields.Item()
         try:
             item.parse(raw.encode("utf-8"))
         except Exception as exc:
