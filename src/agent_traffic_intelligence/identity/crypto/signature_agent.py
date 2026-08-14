@@ -34,7 +34,9 @@ class StructuredFieldSignatureAgentParser:
         try:
             compat = importlib.import_module("http_sf.compat")
         except ImportError as exc:
-            raise SignatureAgentUnavailable("optional Structured Fields dependency is not installed") from exc
+            raise SignatureAgentUnavailable(
+                "optional Structured Fields dependency is not installed"
+            ) from exc
 
         dictionary = compat.Dictionary()
         try:
@@ -46,7 +48,9 @@ class StructuredFieldSignatureAgentParser:
         for label, member in dictionary.items():
             value = getattr(member, "value", None)
             if not isinstance(value, str) or not value:
-                raise SignatureAgentFormatError("Signature-Agent dictionary members must be non-empty strings")
+                raise SignatureAgentFormatError(
+                    "Signature-Agent dictionary members must be non-empty strings"
+                )
             params = getattr(member, "params", {})
             raw_type = params.get("type") if hasattr(params, "get") else None
             references.append(
