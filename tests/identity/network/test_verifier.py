@@ -11,7 +11,11 @@ from agent_traffic_intelligence.identity.models import (
     VerificationOutcome,
 )
 from agent_traffic_intelligence.identity.network.verifier import OfficialRangeVerifier
-from agent_traffic_intelligence.identity.profiles import provider_profile
+from agent_traffic_intelligence.identity.profiles import (
+    NegativeSemantics,
+    RangeSourceProfile,
+    provider_profile,
+)
 from agent_traffic_intelligence.identity.sources.models import (
     SourceDocument,
     SourceType,
@@ -19,6 +23,7 @@ from agent_traffic_intelligence.identity.sources.models import (
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
 FIXTURES = Path(__file__).parents[2] / "fixtures" / "identity" / "providers"
+SYNTHETIC_URI = "https://example.test/provider-ranges.json"
 
 
 def claim(provider: str, agent: str) -> IdentityClaim:
@@ -54,6 +59,15 @@ def document(
     scope: BindingScope,
 ) -> SourceDocument:
     body = (FIXTURES / filename).read_bytes()
+    return document_bytes(body, provider, uri, scope)
+
+
+def document_bytes(
+    body: bytes,
+    provider: str,
+    uri: str,
+    scope: BindingScope,
+) -> SourceDocument:
     return SourceDocument.from_bytes(
         uri=uri,
         source_type=SourceType.IP_RANGES,
@@ -66,37 +80,48 @@ def document(
     )
 
 
-def test_anthropic_shared_range_pass_is_provider_scope() -> None:
-    profile = provider_profile("anthropic").range_sources[0]
+def shared_positive_only_profile() -> RangeSourceProfile:
+    return RangeSourceProfile(
+        uri=SYNTHETIC_URI,
+        format_profile="prefixes-v1",
+        binding_scope=BindingScope.PROVIDER,
+        negative_semantics=NegativeSemantics.POSITIVE_ONLY,
+        reviewed_on="2026-08-14",
+        category="synthetic-provider-wide",
+    )
+
+
+def synthetic_provider_document() -> SourceDocument:
+    return document_bytes(
+        (
+            b'{"creationTime":"2026-08-14T10:00:00Z",'
+            b'"prefixes":[{"ipv6Prefix":"2001:db8::/32"}]}'
+        ),
+        "example",
+        SYNTHETIC_URI,
+        BindingScope.PROVIDER,
+    )
+
+
+def test_shared_range_pass_is_provider_scope() -> None:
     evidence = OfficialRangeVerifier().verify(
         context=context("2001:db8::42", SourceAddressProvenance.DIRECT_PEER),
-        claim=claim("anthropic", "ClaudeBot"),
-        source_profile=profile,
-        document=document(
-            "anthropic-bots.json",
-            "anthropic",
-            profile.uri,
-            profile.binding_scope,
-        ),
+        claim=claim("example", "ExampleBot"),
+        source_profile=shared_positive_only_profile(),
+        document=synthetic_provider_document(),
     )
     assert evidence.outcome is VerificationOutcome.PASS
     assert evidence.binding_scope is BindingScope.PROVIDER
-    assert evidence.subject == "anthropic"
+    assert evidence.subject == "example"
     assert "2001:db8::42" not in json.dumps(evidence.to_dict())
 
 
 def test_positive_only_miss_is_indeterminate() -> None:
-    profile = provider_profile("anthropic").range_sources[0]
     evidence = OfficialRangeVerifier().verify(
         context=context("2001:db9::1", SourceAddressProvenance.DIRECT_PEER),
-        claim=claim("anthropic", "ClaudeBot"),
-        source_profile=profile,
-        document=document(
-            "anthropic-bots.json",
-            "anthropic",
-            profile.uri,
-            profile.binding_scope,
-        ),
+        claim=claim("example", "ExampleBot"),
+        source_profile=shared_positive_only_profile(),
+        document=synthetic_provider_document(),
     )
     assert evidence.outcome is VerificationOutcome.INDETERMINATE
 
