@@ -192,16 +192,21 @@ class ProviderAwareVerificationManager(VerificationManager):
         verifiers: list[IdentityVerifier] = []
         profile = self._profiles.get(claim.provider.casefold())
         if profile is not None:
-            verifiers.extend(self._network_verifiers(profile))
+            verifiers.extend(self._network_verifiers(profile, claim))
         if context.signature is not None and context.signature_input is not None:
             verifiers.extend(self._crypto_verifiers())
         manager = VerificationManager(tuple(verifiers), policy=self._effective_policy)
         return manager.verify(event=event, context=context, claim=claim)
 
-    def _network_verifiers(self, profile: ProviderProfile) -> list[IdentityVerifier]:
+    def _network_verifiers(
+        self,
+        profile: ProviderProfile,
+        claim: IdentityClaim,
+    ) -> list[IdentityVerifier]:
         result: list[IdentityVerifier] = [
             _RangeAdapter(profile.provider, source, self._cache)
             for source in profile.range_sources
+            if source.subject is None or source.subject == claim.agent
         ]
         if self._mode is not VerificationMode.OFFLINE and profile.fcrdns is not None:
             result.append(_FcrdnsAdapter(profile.provider, profile.fcrdns))
