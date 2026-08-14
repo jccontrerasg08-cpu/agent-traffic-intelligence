@@ -1,6 +1,12 @@
-"""External identity-source provenance and cache support."""
+"""External identity-source provenance, cache, trust, and fetching support."""
 
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
+from agent_traffic_intelligence.identity.sources.fetcher import (
+    FetchProtocolError,
+    FetchResult,
+    FetchSecurityError,
+    SafeFetcher,
+)
 from agent_traffic_intelligence.identity.sources.models import (
     SourceDocument,
     SourceMetadata,
@@ -13,6 +19,10 @@ from agent_traffic_intelligence.identity.sources.trust import (
 )
 
 __all__ = [
+    "FetchProtocolError",
+    "FetchResult",
+    "FetchSecurityError",
+    "SafeFetcher",
     "SourceCache",
     "SourceDocument",
     "SourceMetadata",
