@@ -13,7 +13,6 @@ from agent_traffic_intelligence.identity.models import (
     VerificationOutcome,
 )
 from agent_traffic_intelligence.models import (
-    ActorType,
     IdentityClaim,
     RequestEvent,
     VerificationState,
@@ -90,7 +89,8 @@ def test_verification_updates_identity_state_and_confidence_only() -> None:
     base = Detector().detect(event())
     manager = VerificationManager((AgentPassVerifier(),))
     verified = Detector(verification_manager=manager).detect(
-        event(), verification_context=context()
+        event(),
+        verification_context=context(),
     )
 
     assert verified.verification is not None
