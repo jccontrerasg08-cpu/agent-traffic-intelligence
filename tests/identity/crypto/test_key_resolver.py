@@ -4,16 +4,16 @@ import base64
 
 import pytest
 
-pytest.importorskip("cryptography")
-
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
 from agent_traffic_intelligence.identity.crypto.key_resolver import (
     JwkKeyResolver,
     KeyMaterialUnavailable,
 )
+
+ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
+ec = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ec")
+rsa = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.rsa")
+serialization = pytest.importorskip("cryptography.hazmat.primitives.serialization")
 
 
 def b64url(raw: bytes) -> str:
@@ -28,7 +28,7 @@ def b64int(value: int) -> str:
 def test_materializes_ed25519_public_key() -> None:
     private = ed25519.Ed25519PrivateKey.generate()
     public = private.public_key()
-    x = public.public_bytes(Encoding.Raw, PublicFormat.Raw)
+    x = public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     directory = parse_key_directory(
         {"keys": [{"kty": "OKP", "crv": "Ed25519", "x": b64url(x)}]}
     )
