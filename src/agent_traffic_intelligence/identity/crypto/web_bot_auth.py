@@ -270,6 +270,7 @@ class WebBotAuthVerifier:
         algorithms: list[str] = []
         for key in self._directory.keys:
             crv = key.jwk.get("crv")
+            candidates: tuple[str, ...]
             if key.kty == "OKP" and crv == "Ed25519":
                 candidates = ("ed25519",)
             elif key.kty == "EC" and crv == "P-256":
@@ -357,6 +358,7 @@ class WebBotAuthVerifier:
         explanation: str,
         details: dict[str, str | int | float | bool | None],
     ) -> VerificationEvidence:
+        subject: str | None
         if self._binding_scope is BindingScope.AGENT:
             subject = self._subject or claim.agent
         elif self._binding_scope is BindingScope.PROVIDER:
