@@ -21,7 +21,6 @@ from agent_traffic_intelligence.identity.models import (
 from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
-
 DIRECTORY_URI = "https://agent.example/.well-known/http-message-signatures-directory"
 
 
