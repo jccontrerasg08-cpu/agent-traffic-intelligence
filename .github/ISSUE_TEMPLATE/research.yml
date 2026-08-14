@@ -1,0 +1,33 @@
+name: Research / detection proposal
+description: Propose a signal, dataset, identity source, model, or evaluation experiment.
+title: "research: "
+labels: [research]
+body:
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: What signal or method should improve which score dimension?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and primary sources
+      description: Include papers, official docs, or reproducible observations.
+    validations:
+      required: true
+  - type: textarea
+    id: evaluation
+    attributes:
+      label: Evaluation plan
+      description: Explain datasets, leakage controls, metrics, and failure modes.
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy and license impact
+      description: What new data is collected? What are the source/license constraints?
+    validations:
+      required: true

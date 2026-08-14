@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible defect using synthetic or sanitized data.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste production logs, secrets, raw IPs, cookies, authorization headers, or private packet captures. Use synthetic data where possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized input and commands.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ATI version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version and operating system.
