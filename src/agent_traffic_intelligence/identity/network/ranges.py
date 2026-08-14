@@ -16,7 +16,6 @@ from ipaddress import (
 )
 from typing import Any
 
-
 Network = IPv4Network | IPv6Network
 Address = IPv4Address | IPv6Address
 
