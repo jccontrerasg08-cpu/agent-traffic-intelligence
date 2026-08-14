@@ -31,7 +31,6 @@ from agent_traffic_intelligence.identity.sources.trust import (
 )
 from agent_traffic_intelligence.models import IdentityClaim
 
-
 _WEB_BOT_AUTH_TAG = "web-bot-auth"
 _MAX_VALIDITY_SECONDS = 24 * 60 * 60
 _CLOCK_SKEW_SECONDS = 5
