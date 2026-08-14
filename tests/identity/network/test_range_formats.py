@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 import pytest
 
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
-from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import parse_prefixes_v1
+from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
+    parse_prefixes_v1,
+)
 from agent_traffic_intelligence.identity.network.ranges import RangeFormatError
 
 
