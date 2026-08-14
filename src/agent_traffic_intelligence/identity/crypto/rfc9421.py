@@ -31,8 +31,16 @@ class Rfc9421Result:
     nonce: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "covered_components", MappingProxyType(dict(self.covered_components or {})))
-        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters or {})))
+        object.__setattr__(
+            self,
+            "covered_components",
+            MappingProxyType(dict(self.covered_components or {})),
+        )
+        object.__setattr__(
+            self,
+            "parameters",
+            MappingProxyType(dict(self.parameters or {})),
+        )
 
 
 @dataclass(slots=True)
@@ -56,18 +64,30 @@ class Rfc9421Verifier:
         max_age_seconds: int = 24 * 60 * 60,
     ) -> Rfc9421Result:
         if not context.signature or not context.signature_input or not context.target_uri:
-            return self._result(VerificationOutcome.UNAVAILABLE, "signature headers and target URI are required")
+            return self._result(
+                VerificationOutcome.UNAVAILABLE,
+                "signature headers and target URI are required",
+            )
         if max_age_seconds <= 0:
-            return self._result(VerificationOutcome.ERROR, "maximum signature age must be positive")
+            return self._result(
+                VerificationOutcome.ERROR,
+                "maximum signature age must be positive",
+            )
         try:
             hms = importlib.import_module("http_message_signatures")
         except ImportError:
-            return self._result(VerificationOutcome.UNAVAILABLE, "optional http-message-signatures dependency is not installed")
+            return self._result(
+                VerificationOutcome.UNAVAILABLE,
+                "optional http-message-signatures dependency is not installed",
+            )
 
         algorithms = getattr(hms, "algorithms", None)
         algorithm = getattr(algorithms, "signature_algorithms", {}).get(algorithm_id)
         if algorithm is None:
-            return self._result(VerificationOutcome.UNAVAILABLE, f"unsupported RFC 9421 algorithm: {algorithm_id}")
+            return self._result(
+                VerificationOutcome.UNAVAILABLE,
+                f"unsupported RFC 9421 algorithm: {algorithm_id}",
+            )
 
         try:
             verifier = hms.HTTPMessageVerifier(
@@ -81,24 +101,45 @@ class Rfc9421Verifier:
                 expect_tag=expect_tag,
             )
         except LookupError:
-            return self._result(VerificationOutcome.UNAVAILABLE, "signature key is unavailable")
+            return self._result(
+                VerificationOutcome.UNAVAILABLE,
+                "signature key is unavailable",
+            )
         except hms.HTTPMessageSignaturesException as exc:
-            return self._result(VerificationOutcome.MISMATCH, f"RFC 9421 verification failed: {exc}")
+            return self._result(
+                VerificationOutcome.MISMATCH,
+                f"RFC 9421 verification failed: {exc}",
+            )
         except Exception as exc:  # pragma: no cover
-            return self._result(VerificationOutcome.ERROR, f"unexpected RFC 9421 error: {type(exc).__name__}")
+            return self._result(
+                VerificationOutcome.ERROR,
+                f"unexpected RFC 9421 error: {type(exc).__name__}",
+            )
 
         if len(verified) != 1:
-            return self._result(VerificationOutcome.MISMATCH, "verification tag matched an ambiguous number of signatures")
+            return self._result(
+                VerificationOutcome.MISMATCH,
+                "verification tag matched an ambiguous number of signatures",
+            )
         item = verified[0]
-        covered = {str(key): str(value) for key, value in item.covered_components.items()}
+        covered = {
+            str(key): str(value)
+            for key, value in item.covered_components.items()
+        }
         names = frozenset(
             name
             for key in covered
             if (name := self._component_name(key)) != "@signature-params"
         )
         if not required_components.issubset(names):
-            return self._result(VerificationOutcome.MISMATCH, "valid signature did not cover every ATI-required component")
-        parameters = {str(key): self._scalar(value) for key, value in item.parameters.items()}
+            return self._result(
+                VerificationOutcome.MISMATCH,
+                "valid signature did not cover every ATI-required component",
+            )
+        parameters = {
+            str(key): self._scalar(value)
+            for key, value in item.parameters.items()
+        }
         verified_algorithm = getattr(item.algorithm, "algorithm_id", algorithm_id)
         return Rfc9421Result(
             outcome=VerificationOutcome.PASS,
@@ -126,15 +167,21 @@ class Rfc9421Verifier:
                 if component_id == "signature-agent" and key is not None:
                     raw_header = self.headers.get("signature-agent")
                     if raw_header is None:
-                        raise hms.HTTPMessageSignaturesException("covered Signature-Agent header is missing")
+                        raise hms.HTTPMessageSignaturesException(
+                            "covered Signature-Agent header is missing"
+                        )
                     dictionary = compat.Dictionary()
                     try:
                         dictionary.parse(str(raw_header).encode("utf-8"))
                     except Exception as exc:
-                        raise hms.HTTPMessageSignaturesException("malformed Signature-Agent dictionary") from exc
+                        raise hms.HTTPMessageSignaturesException(
+                            "malformed Signature-Agent dictionary"
+                        ) from exc
                     key_text = str(key)
                     if key_text not in dictionary:
-                        raise hms.HTTPMessageSignaturesException("signed Signature-Agent member is missing")
+                        raise hms.HTTPMessageSignaturesException(
+                            "signed Signature-Agent member is missing"
+                        )
                     return str(dictionary[key_text])
                 return super().resolve(component_node)
 
@@ -150,7 +197,11 @@ class Rfc9421Verifier:
         headers["Signature-Input"] = context.signature_input
         if context.signature_agent is not None:
             headers["Signature-Agent"] = context.signature_agent
-        return _RequestMessage(method=context.method, url=context.target_uri, headers=headers)
+        return _RequestMessage(
+            method=context.method,
+            url=context.target_uri,
+            headers=headers,
+        )
 
     @staticmethod
     def _component_name(serialized: str) -> str:
@@ -168,5 +219,8 @@ class Rfc9421Verifier:
         return str(value)
 
     @staticmethod
-    def _result(outcome: VerificationOutcome, explanation: str) -> Rfc9421Result:
+    def _result(
+        outcome: VerificationOutcome,
+        explanation: str,
+    ) -> Rfc9421Result:
         return Rfc9421Result(outcome=outcome, explanation=explanation)
