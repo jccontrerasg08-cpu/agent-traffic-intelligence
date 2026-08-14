@@ -125,16 +125,7 @@
       "crypto": null,
       "fcrdns": null,
       "provider": "anthropic",
-      "range_sources": [
-        {
-          "binding_scope": "provider",
-          "category": "anthropic-crawlers",
-          "format_profile": "prefixes-v1",
-          "negative_semantics": "positive_only",
-          "reviewed_on": "2026-08-14",
-          "uri": "https://claude.com/crawling/bots.json"
-        }
-      ]
+      "range_sources": []
     },
     {
       "crypto": {
