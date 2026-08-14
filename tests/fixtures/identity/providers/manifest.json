@@ -1,0 +1,37 @@
+{
+  "entries": [
+    {
+      "file": "openai-gptbot.json",
+      "format_profile": "prefixes-v1",
+      "official_uri": "https://openai.com/gptbot.json",
+      "reviewed_on": "2026-08-14",
+      "sha256": "01e56891e96f61acf5adc533e7c4dcdbd651624fedbd7e590df7b95b739273ce",
+      "synthetic": true
+    },
+    {
+      "file": "google-common.json",
+      "format_profile": "prefixes-v1",
+      "official_uri": "https://developers.google.com/crawling/ipranges/common-crawlers.json",
+      "reviewed_on": "2026-08-14",
+      "sha256": "0dc6be1cd7b269ec6e3c411a1015dfa0a8c4fc98be4a9cea2359f43d41c0d537",
+      "synthetic": true
+    },
+    {
+      "file": "perplexity-user.json",
+      "format_profile": "prefixes-v1",
+      "official_uri": "https://www.perplexity.ai/perplexity-user.json",
+      "reviewed_on": "2026-08-14",
+      "sha256": "24fc0914c342773f1213b501d580e298652c74265ada29e5110eccb9f2bc2bfb",
+      "synthetic": true
+    },
+    {
+      "file": "anthropic-bots.json",
+      "format_profile": "prefixes-v1",
+      "official_uri": "https://claude.com/crawling/bots.json",
+      "reviewed_on": "2026-08-14",
+      "sha256": "1347a189c4a04f30629fee76720befbefc53fc239c0edc7b1156de0ada703de6",
+      "synthetic": true
+    }
+  ],
+  "schema_version": 1
+}
