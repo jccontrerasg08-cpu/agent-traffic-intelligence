@@ -5,19 +5,16 @@ from datetime import datetime, timedelta
 
 import pytest
 
-hms = pytest.importorskip("http_message_signatures")
-pytest.importorskip("cryptography")
-
-from cryptography.hazmat.primitives.asymmetric import ed25519
-from http_message_signatures import HTTPMessageSigner
-from http_message_signatures.algorithms import ED25519
-
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.rfc9421 import Rfc9421Verifier
 from agent_traffic_intelligence.identity.models import (
     SourceAddressProvenance,
     VerificationOutcome,
 )
+
+hms = pytest.importorskip("http_message_signatures")
+algorithms = pytest.importorskip("http_message_signatures.algorithms")
+ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
 
 
 @dataclass
@@ -70,8 +67,8 @@ def signed_message(
     if signature_agent is not None:
         message.headers["Signature-Agent"] = signature_agent
     now = datetime.now()
-    signer = HTTPMessageSigner(
-        signature_algorithm=ED25519,
+    signer = hms.HTTPMessageSigner(
+        signature_algorithm=algorithms.ED25519,
         key_resolver=resolver,
         component_resolver_class=Rfc9421Verifier._component_resolver(hms),
     )
