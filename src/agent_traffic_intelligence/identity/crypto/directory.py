@@ -22,6 +22,7 @@ def _b64url_sha256(data: bytes) -> str:
 
 def _thumbprint_members(jwk: Mapping[str, Any]) -> dict[str, str]:
     kty = jwk.get("kty")
+    names: tuple[str, ...]
     if kty == "OKP":
         names = ("crv", "kty", "x")
     elif kty == "EC":
