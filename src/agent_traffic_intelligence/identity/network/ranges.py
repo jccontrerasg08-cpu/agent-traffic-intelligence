@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from ipaddress import (
     IPv4Address,
     IPv4Network,
@@ -109,7 +109,7 @@ def coerce_mapping(payload: bytes | str | Mapping[str, Any]) -> Mapping[str, Any
 
 
 def parse_creation_time(value: Any, *, require_z: bool) -> datetime:
-    """Parse a source creationTime with optional JAFAR-specific UTC-Z enforcement."""
+    """Parse source creationTime, normalizing provider-naive timestamps to UTC."""
 
     if not isinstance(value, str) or not value:
         raise RangeFormatError("creationTime must be a non-empty ISO-8601 string")
@@ -121,7 +121,9 @@ def parse_creation_time(value: Any, *, require_z: bool) -> datetime:
     except ValueError as exc:
         raise RangeFormatError("creationTime must be valid ISO-8601") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise RangeFormatError("creationTime must be timezone-aware")
+        if require_z:
+            raise RangeFormatError("creationTime must be timezone-aware")
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed
 
 
