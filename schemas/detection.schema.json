@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/agent-traffic-intelligence/detection.schema.json",
-  "title": "ATI Detection V0",
+  "title": "ATI Detection",
   "type": "object",
   "required": ["request_id", "automation_score", "ai_score", "identity_confidence", "risk_score", "identity", "evidence", "features", "ruleset_version"],
   "properties": {
@@ -13,6 +13,7 @@
     "identity": {"type": ["object", "null"]},
     "evidence": {"type": "array", "items": {"type": "object"}},
     "features": {"type": "object"},
-    "ruleset_version": {"type": "string"}
+    "ruleset_version": {"type": "string"},
+    "verification": {"$ref": "verification.schema.json"}
   }
 }
