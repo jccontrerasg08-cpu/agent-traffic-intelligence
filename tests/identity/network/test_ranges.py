@@ -4,7 +4,10 @@ import json
 from datetime import UTC, datetime
 from ipaddress import ip_network
 
-from agent_traffic_intelligence.identity.network.ranges import PublishedRange, PublishedRangeSet
+from agent_traffic_intelligence.identity.network.ranges import (
+    PublishedRange,
+    PublishedRangeSet,
+)
 
 
 def range_set(*ranges: PublishedRange) -> PublishedRangeSet:
