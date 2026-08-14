@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
+
+import pytest
 
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
 from agent_traffic_intelligence.identity.crypto.replay import ReplayCache
 from agent_traffic_intelligence.identity.crypto.rfc9421 import Rfc9421Result
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    SignatureAgentFormatError,
     SignatureAgentReference,
+    SignatureAgentUnavailable,
 )
 from agent_traffic_intelligence.identity.crypto.web_bot_auth import (
     WebBotAuthVerifier,
@@ -48,6 +53,16 @@ class FakeSignatureAgentParser:
         return (SignatureAgentReference(label="sig1", uri=self.uri),)
 
 
+class UnavailableParser:
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        raise SignatureAgentUnavailable("optional parser missing")
+
+
+class InvalidParser:
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        raise SignatureAgentFormatError("bad structured field")
+
+
 def directory():
     return parse_key_directory(
         {
@@ -75,7 +90,7 @@ def claim(provider: str = "example", agent: str = "ExampleBot") -> IdentityClaim
 
 
 def context(
-    signature_agent: str = f'sig1="{DIRECTORY_URI}"',
+    signature_agent: str | None = f'sig1="{DIRECTORY_URI}"',
 ) -> VerificationContext:
     return VerificationContext(
         source_ip=None,
@@ -136,6 +151,22 @@ def verifier(
     )
 
 
+def with_parameters(
+    result: Rfc9421Result,
+    **updates: object,
+) -> Rfc9421Result:
+    params = dict(result.parameters or {})
+    for key, value in updates.items():
+        if value is _MISSING:
+            params.pop(key, None)
+        else:
+            params[key] = value
+    return replace(result, parameters=params)
+
+
+_MISSING = object()
+
+
 def test_valid_chain_binds_exact_agent_and_replay() -> None:
     cache = ReplayCache()
     instance = verifier(good_result(), replay=cache)
@@ -149,15 +180,10 @@ def test_valid_chain_binds_exact_agent_and_replay() -> None:
 
 def test_unsigned_or_wrong_signature_agent_is_mismatch() -> None:
     result = good_result()
-    unsigned = Rfc9421Result(
-        outcome=result.outcome,
-        explanation=result.explanation,
-        label=result.label,
-        algorithm_id=result.algorithm_id,
+    unsigned = replace(
+        result,
         covered_components={'"@authority"': "example.com"},
         covered_component_names=frozenset({"@authority"}),
-        parameters=result.parameters,
-        nonce=result.nonce,
     )
     unsigned_evidence = verifier(unsigned).verify(
         context=context(),
@@ -189,3 +215,101 @@ def test_google_style_identity_uri_can_use_well_known_directory() -> None:
     )
     assert evidence.outcome is VerificationOutcome.PASS
     assert evidence.source_uri == DIRECTORY_URI
+
+
+def test_untrusted_directory_and_parser_failures_are_neutral_or_mismatch() -> None:
+    result = good_result()
+    untrusted = WebBotAuthVerifier(
+        directory=directory(),
+        directory_uri=DIRECTORY_URI,
+        binding_scope=BindingScope.AGENT,
+        trust_policy=SourceTrustPolicy(frozenset()),
+        rfc_verifier=FakeRfcVerifier(result),
+        signature_agent_parser=FakeSignatureAgentParser(),
+    ).verify(context=context(), claim=claim(), now=NOW)
+    assert untrusted.outcome is VerificationOutcome.UNAVAILABLE
+
+    for parser, expected in (
+        (UnavailableParser(), VerificationOutcome.UNAVAILABLE),
+        (InvalidParser(), VerificationOutcome.MISMATCH),
+    ):
+        evidence = WebBotAuthVerifier(
+            directory=directory(),
+            directory_uri=DIRECTORY_URI,
+            binding_scope=BindingScope.AGENT,
+            trust_policy=SourceTrustPolicy(frozenset({DIRECTORY_URI})),
+            rfc_verifier=FakeRfcVerifier(result),
+            signature_agent_parser=parser,
+        ).verify(context=context(), claim=claim(), now=NOW)
+        assert evidence.outcome is expected
+
+
+def test_rfc_failure_outcome_is_preserved() -> None:
+    for outcome in (VerificationOutcome.UNAVAILABLE, VerificationOutcome.ERROR):
+        result = Rfc9421Result(outcome=outcome, explanation="upstream result")
+        evidence = verifier(result).verify(context=context(None), claim=claim(), now=NOW)
+        assert evidence.outcome is outcome
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        with_parameters(good_result(), created="bad"),
+        with_parameters(good_result(), created=_MISSING),
+        with_parameters(good_result(), expires=_MISSING),
+        with_parameters(good_result(), tag="wrong"),
+        with_parameters(good_result(), keyid=_MISSING),
+        with_parameters(good_result(), keyid="missing"),
+        with_parameters(
+            good_result(),
+            created=int(NOW.timestamp()),
+            expires=int(NOW.timestamp()) + 86401,
+        ),
+        with_parameters(
+            good_result(),
+            created=int(NOW.timestamp()) + 60,
+            expires=int(NOW.timestamp()) + 300,
+        ),
+        with_parameters(
+            good_result(),
+            created=int(NOW.timestamp()) - 300,
+            expires=int(NOW.timestamp()) - 60,
+        ),
+        replace(good_result(), algorithm_id="rsa-pss-sha512"),
+        replace(
+            good_result(),
+            covered_components={'"signature-agent";key="sig1"': '"x"'},
+            covered_component_names=frozenset({"signature-agent"}),
+        ),
+    ],
+)
+def test_invalid_signature_policy_never_verifies(result: Rfc9421Result) -> None:
+    evidence = verifier(result).verify(context=context(), claim=claim(), now=NOW)
+    assert evidence.outcome is not VerificationOutcome.PASS
+
+
+def test_non_https_signed_identity_and_naive_clock_fail_closed() -> None:
+    evidence = verifier(good_result(), parser_uri="http://agent.example").verify(
+        context=context(),
+        claim=claim(),
+        now=NOW,
+    )
+    assert evidence.outcome is VerificationOutcome.MISMATCH
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        verifier(good_result()).verify(
+            context=context(),
+            claim=claim(),
+            now=datetime(2026, 8, 14, 11, 0),
+        )
+
+
+def test_signature_agent_is_optional_when_directory_binding_is_otherwise_valid() -> None:
+    evidence = verifier(good_result(nonce=None)).verify(
+        context=context(None),
+        claim=claim(),
+        now=NOW,
+    )
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.details["signature_agent_present"] is False
+    assert evidence.details["nonce_present"] is False
