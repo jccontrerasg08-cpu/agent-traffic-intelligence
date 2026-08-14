@@ -10,6 +10,10 @@ from types import MappingProxyType
 from typing import Any, Protocol, cast
 
 from agent_traffic_intelligence.identity.context import VerificationContext
+from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    SignatureAgentUnavailable,
+    structured_fields_module,
+)
 from agent_traffic_intelligence.identity.models import VerificationOutcome
 
 Scalar = str | int | float | bool | None
@@ -140,6 +144,7 @@ class Rfc9421Verifier:
             str(key): self._scalar(value)
             for key, value in item.parameters.items()
         }
+        nonce_value = parameters.get("nonce")
         verified_algorithm = getattr(item.algorithm, "algorithm_id", algorithm_id)
         return Rfc9421Result(
             outcome=VerificationOutcome.PASS,
@@ -149,14 +154,14 @@ class Rfc9421Verifier:
             covered_components=covered,
             covered_component_names=names,
             parameters=parameters,
-            nonce=str(item.nonce) if item.nonce is not None else None,
+            nonce=str(nonce_value) if nonce_value is not None else None,
         )
 
     @staticmethod
     def _component_resolver(hms: Any) -> type:
         try:
-            compat = importlib.import_module("http_sf.compat")
-        except ImportError:
+            structured_fields = structured_fields_module()
+        except SignatureAgentUnavailable:
             return cast(type, hms.HTTPSignatureComponentResolver)
         base = hms.HTTPSignatureComponentResolver
 
@@ -170,7 +175,7 @@ class Rfc9421Verifier:
                         raise hms.HTTPMessageSignaturesException(
                             "covered Signature-Agent header is missing"
                         )
-                    dictionary = compat.Dictionary()
+                    dictionary = structured_fields.Dictionary()
                     try:
                         dictionary.parse(str(raw_header).encode("utf-8"))
                     except Exception as exc:
