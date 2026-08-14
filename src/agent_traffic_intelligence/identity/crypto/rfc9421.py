@@ -12,7 +12,6 @@ from typing import Any, Protocol
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.models import VerificationOutcome
 
-
 Scalar = str | int | float | bool | None
 
 
