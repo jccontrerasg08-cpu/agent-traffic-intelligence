@@ -5,7 +5,10 @@ from __future__ import annotations
 import base64
 import importlib
 
-from agent_traffic_intelligence.identity.crypto.directory import DirectoryKey, KeyDirectory
+from agent_traffic_intelligence.identity.crypto.directory import (
+    DirectoryKey,
+    KeyDirectory,
+)
 
 
 class KeyMaterialUnavailable(LookupError):
@@ -37,14 +40,20 @@ class JwkKeyResolver:
     def resolve_public_key(self, key_id: str) -> object:
         key = self.resolve_directory_key(key_id)
         try:
-            ed25519 = importlib.import_module("cryptography.hazmat.primitives.asymmetric.ed25519")
+            ed25519 = importlib.import_module(
+                "cryptography.hazmat.primitives.asymmetric.ed25519"
+            )
             ec = importlib.import_module("cryptography.hazmat.primitives.asymmetric.ec")
             rsa = importlib.import_module("cryptography.hazmat.primitives.asymmetric.rsa")
         except ImportError as exc:
-            raise KeyMaterialUnavailable("optional cryptography dependency is not installed") from exc
+            raise KeyMaterialUnavailable(
+                "optional cryptography dependency is not installed"
+            ) from exc
 
         if key.kty == "OKP" and key.jwk.get("crv") == "Ed25519":
-            return ed25519.Ed25519PublicKey.from_public_bytes(_decode_b64url(str(key.jwk["x"])))
+            return ed25519.Ed25519PublicKey.from_public_bytes(
+                _decode_b64url(str(key.jwk["x"]))
+            )
         if key.kty == "EC" and key.jwk.get("crv") == "P-256":
             x = _decode_int(str(key.jwk["x"]))
             y = _decode_int(str(key.jwk["y"]))
