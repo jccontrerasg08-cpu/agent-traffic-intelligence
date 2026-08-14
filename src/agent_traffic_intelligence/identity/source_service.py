@@ -5,16 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from agent_traffic_intelligence.identity.crypto.directory import (
-    DirectoryFormatError,
-    parse_key_directory,
-)
+from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
 from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
     parse_prefixes_v1,
 )
-from agent_traffic_intelligence.identity.network.ranges import RangeFormatError
 from agent_traffic_intelligence.identity.profiles import load_provider_profiles
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult, SafeFetcher
@@ -83,14 +79,8 @@ def validate_sources(cache: SourceCache) -> list[str]:
         if document is None:
             continue
         try:
-            if spec.source_type is SourceType.IP_RANGES:
-                if spec.parser_profile == "jafar-00":
-                    parse_jafar(document.content)
-                else:
-                    parse_prefixes_v1(document.content)
-            elif spec.source_type is SourceType.KEY_DIRECTORY:
-                parse_key_directory(document.content)
-        except (RangeFormatError, DirectoryFormatError) as exc:
+            _validate_document(spec, document)
+        except ValueError as exc:
             errors.append(f"{spec.provider} {spec.uri}: {exc}")
     return errors
 
@@ -118,9 +108,25 @@ def refresh_sources(
             continue
         assert result.body is not None
         document = _document_from_result(spec, result)
+        _validate_document(spec, document)
         cache.put(document)
         refreshed += 1
     return refreshed, not_modified
+
+
+def _validate_document(spec: SourceSpec, document: SourceDocument) -> None:
+    if spec.source_type is SourceType.IP_RANGES:
+        if spec.parser_profile == "jafar-00":
+            parse_jafar(document.content)
+            return
+        if spec.parser_profile == "prefixes-v1":
+            parse_prefixes_v1(document.content)
+            return
+        raise ValueError(f"unsupported IP range parser profile: {spec.parser_profile}")
+    if spec.source_type is SourceType.KEY_DIRECTORY:
+        parse_key_directory(document.content)
+        return
+    raise ValueError(f"unsupported source type: {spec.source_type.value}")
 
 
 def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocument:
