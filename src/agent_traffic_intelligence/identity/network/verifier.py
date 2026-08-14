@@ -10,12 +10,19 @@ from agent_traffic_intelligence.identity.models import (
     VerificationOutcome,
 )
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
-from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import parse_prefixes_v1
-from agent_traffic_intelligence.identity.network.ranges import PublishedRangeSet, RangeFormatError
-from agent_traffic_intelligence.identity.profiles import NegativeSemantics, RangeSourceProfile
+from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
+    parse_prefixes_v1,
+)
+from agent_traffic_intelligence.identity.network.ranges import (
+    PublishedRangeSet,
+    RangeFormatError,
+)
+from agent_traffic_intelligence.identity.profiles import (
+    NegativeSemantics,
+    RangeSourceProfile,
+)
 from agent_traffic_intelligence.identity.sources.models import SourceDocument
 from agent_traffic_intelligence.models import IdentityClaim
-
 
 _TRUSTED_ADDRESS_PROVENANCE = {
     SourceAddressProvenance.DIRECT_PEER,
