@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from agent_traffic_intelligence.identity.crypto.directory import KeyDirectory, parse_key_directory
+from agent_traffic_intelligence.identity.crypto.directory import (
+    KeyDirectory,
+    parse_key_directory,
+)
 
 
 class AgentCardFormatError(ValueError):
@@ -103,7 +106,15 @@ def parse_agent_card(
     if trigger not in (None, "fetcher", "crawler"):
         raise AgentCardFormatError("web_bot_auth.trigger must be fetcher or crawler")
 
-    recognized_top_level = {"client_id", "client_name", "client_uri", "logo_uri", "contacts", "jwks_uri", "jwks"}
+    recognized_top_level = {
+        "client_id",
+        "client_name",
+        "client_uri",
+        "logo_uri",
+        "contacts",
+        "jwks_uri",
+        "jwks",
+    }
     recognized_web_bot_auth = {
         "expected-user-agent",
         "rfc9309-product-token",
@@ -116,7 +127,10 @@ def parse_agent_card(
         "known-urls",
         "ips_uri",
     }
-    if not recognized_top_level.intersection(decoded) and not recognized_web_bot_auth.intersection(extension):
+    if (
+        not recognized_top_level.intersection(decoded)
+        and not recognized_web_bot_auth.intersection(extension)
+    ):
         raise AgentCardFormatError("agent card must contain at least one recognized parameter")
 
     return AgentCard(
@@ -129,12 +143,18 @@ def parse_agent_card(
         inline_jwks=inline,
         expected_user_agent=_string(extension.get("expected-user-agent")),
         robots_product_token=_string(extension.get("rfc9309-product-token")),
-        robots_compliance=_string_tuple(extension.get("rfc9309-compliance"), "web_bot_auth.rfc9309-compliance"),
+        robots_compliance=_string_tuple(
+            extension.get("rfc9309-compliance"),
+            "web_bot_auth.rfc9309-compliance",
+        ),
         trigger=trigger,
         purpose=_string(extension.get("purpose")),
         targeted_content=_string(extension.get("targeted-content")),
         rate_control=_string(extension.get("rate-control")),
         rate_expectation=_string(extension.get("rate-expectation")),
-        known_urls=_string_tuple(extension.get("known-urls"), "web_bot_auth.known-urls"),
+        known_urls=_string_tuple(
+            extension.get("known-urls"),
+            "web_bot_auth.known-urls",
+        ),
         ips_uri=_https_uri(extension.get("ips_uri"), "web_bot_auth.ips_uri"),
     )
