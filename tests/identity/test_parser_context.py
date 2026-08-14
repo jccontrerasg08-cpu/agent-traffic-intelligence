@@ -26,7 +26,9 @@ def base_record() -> dict[str, object]:
         "http_authorization": "Bearer should-never-survive",
         "http_signature": "sig1=:secret-material:",
         "http_signature_input": 'sig1=("@authority");created=1',
-        "http_signature_agent": "https://agent.example/.well-known/http-message-signatures-directory",
+        "http_signature_agent": (
+            "https://agent.example/.well-known/http-message-signatures-directory"
+        ),
         "http_content_digest": "sha-256=:abc:",
     }
 
