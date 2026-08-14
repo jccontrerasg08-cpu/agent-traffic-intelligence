@@ -20,7 +20,10 @@ from agent_traffic_intelligence.identity.source_service import (
     validate_sources,
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
-from agent_traffic_intelligence.identity.sources.fetcher import FetchProtocolError, FetchSecurityError
+from agent_traffic_intelligence.identity.sources.fetcher import (
+    FetchProtocolError,
+    FetchSecurityError,
+)
 from agent_traffic_intelligence.parsers.jsonl import (
     ParseError,
     iter_jsonl,
@@ -68,7 +71,10 @@ def _parser() -> argparse.ArgumentParser:
     sources = subparsers.add_parser("sources", help="Inspect or refresh trusted identity sources.")
     sources_sub = sources.add_subparsers(dest="sources_command", required=True)
     sources_sub.add_parser("status", help="Show cache state for configured official sources.")
-    refresh = sources_sub.add_parser("refresh", help="Fetch configured official sources over HTTPS.")
+    refresh = sources_sub.add_parser(
+        "refresh",
+        help="Fetch configured official sources over HTTPS.",
+    )
     refresh.add_argument("--provider", help="Refresh only one configured provider.")
     sources_sub.add_parser("validate", help="Validate all cached source documents offline.")
 
