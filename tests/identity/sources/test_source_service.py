@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 import agent_traffic_intelligence.identity.source_service as service
+from agent_traffic_intelligence.identity.crypto.directory import jwk_thumbprint
+from agent_traffic_intelligence.identity.crypto.rfc9421_response import (
+    response_component_resolver_class,
+)
+from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    structured_fields_module,
+)
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.source_service import (
     SourceSpec,
@@ -19,6 +30,7 @@ from agent_traffic_intelligence.identity.sources.models import SourceDocument, S
 
 VALID_RANGES = b'{"creationTime":"2026-08-14T00:00:00Z","prefixes":[]}'
 SOURCE_CREATED_AT = datetime(2026, 8, 14, 0, 0, tzinfo=UTC)
+DIRECTORY_URI = "https://agent.example/.well-known/http-message-signatures-directory"
 
 
 def range_spec(provider: str = "example") -> SourceSpec:
@@ -28,6 +40,16 @@ def range_spec(provider: str = "example") -> SourceSpec:
         source_type=SourceType.IP_RANGES,
         parser_profile="prefixes-v1",
         binding_scope=BindingScope.PROVIDER,
+    )
+
+
+def directory_spec() -> SourceSpec:
+    return SourceSpec(
+        provider="example",
+        uri=DIRECTORY_URI,
+        source_type=SourceType.KEY_DIRECTORY,
+        parser_profile="directory-05",
+        binding_scope=BindingScope.AGENT,
     )
 
 
@@ -89,6 +111,107 @@ def fetch_result(
         cache_control=cache_control,
         redirects=0,
         not_modified=not_modified,
+    )
+
+
+@dataclass
+class MutableRequest:
+    method: str
+    url: str
+    headers: dict[str, str]
+
+
+@dataclass
+class MutableResponse:
+    status_code: int
+    url: str
+    headers: dict[str, str]
+    request: MutableRequest
+
+
+class DirectoryKeyResolver:
+    def __init__(self, key_id: str, private_key: object) -> None:
+        self.key_id = key_id
+        self.private_key = private_key
+
+    def resolve_private_key(self, key_id: str) -> object:
+        if key_id != self.key_id:
+            raise KeyError(key_id)
+        return self.private_key
+
+    def resolve_public_key(self, key_id: str) -> object:
+        if key_id != self.key_id:
+            raise KeyError(key_id)
+        return self.private_key.public_key()
+
+
+def _signed_directory_fetch_result(spec: SourceSpec) -> tuple[FetchResult, str]:
+    hms = pytest.importorskip("http_message_signatures")
+    algorithms = pytest.importorskip("http_message_signatures.algorithms")
+    ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
+    serialization = pytest.importorskip("cryptography.hazmat.primitives.serialization")
+
+    private_key = ed25519.Ed25519PrivateKey.generate()
+    public_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    raw_key = {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": base64.urlsafe_b64encode(public_bytes).rstrip(b"=").decode("ascii"),
+        "use": "sig",
+    }
+    key_id = jwk_thumbprint(raw_key)
+    raw_key["kid"] = key_id
+    body = json.dumps(
+        {"keys": [raw_key]},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+    sf = structured_fields_module()
+    content_digest = str(sf.Dictionary({"sha-256": hashlib.sha256(body).digest()}))
+    resolver = DirectoryKeyResolver(key_id, private_key)
+    request = MutableRequest(method="GET", url=spec.uri, headers={})
+    response = MutableResponse(
+        status_code=200,
+        url="https://cdn.example/directory-cache",
+        headers={"Content-Digest": content_digest},
+        request=request,
+    )
+    signer = hms.HTTPMessageSigner(
+        signature_algorithm=algorithms.ED25519,
+        key_resolver=resolver,
+        component_resolver_class=response_component_resolver_class(),
+    )
+    now = datetime.now()
+    signer.sign(
+        response,
+        key_id=key_id,
+        covered_component_ids=('"@authority";req', "content-digest"),
+        created=now,
+        expires=now + timedelta(minutes=5),
+        label="directory-binding",
+        tag="http-message-signatures-directory",
+    )
+
+    return (
+        FetchResult(
+            uri=response.url,
+            status=response.status_code,
+            body=body,
+            content_type="application/http-message-signatures-directory+json",
+            etag='"directory-v1"',
+            last_modified="Fri, 14 Aug 2026 12:00:00 GMT",
+            cache_control="max-age=3600",
+            redirects=0,
+            not_modified=False,
+            signature=response.headers.get("Signature"),
+            signature_input=response.headers.get("Signature-Input"),
+            content_digest=content_digest,
+        ),
+        key_id,
     )
 
 
@@ -170,6 +293,32 @@ def test_refresh_stores_valid_source_and_uses_conditional_metadata(
     assert refreshed_document is not None
     assert refreshed_document.metadata.etag == '"v2"'
     assert refreshed_document.metadata.expires_at is not None
+
+
+def test_signed_directory_refresh_caches_only_derived_authority_binding(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    spec = directory_spec()
+    monkeypatch.setattr(service, "configured_sources", lambda: (spec,))
+    result, key_id = _signed_directory_fetch_result(spec)
+    cache = SourceCache(tmp_path)
+    fetcher = FakeFetcher([result])
+
+    refreshed, not_modified = refresh_sources(cache, fetcher=fetcher)
+
+    assert (refreshed, not_modified) == (1, 0)
+    cached = cache.get(spec.uri)
+    assert cached is not None
+    assert len(cached.metadata.key_authority_bindings) == 1
+    binding = cached.metadata.key_authority_bindings[0]
+    assert binding.key_thumbprint == key_id
+    assert binding.authority == "agent.example"
+    assert binding.body_sha256 == cached.metadata.sha256
+    metadata = cached.metadata.to_dict()
+    assert "signature" not in metadata
+    assert "signature_input" not in metadata
+    assert "content_digest" not in metadata
 
 
 def test_refresh_304_revalidates_freshness_without_changing_content(
