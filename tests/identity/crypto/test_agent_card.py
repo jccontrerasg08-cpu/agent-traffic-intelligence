@@ -8,6 +8,7 @@ from agent_traffic_intelligence.identity.crypto.agent_card import (
     AgentCardFormatError,
     parse_agent_card,
 )
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 
 def inline_jwks() -> dict[str, object]:
@@ -74,3 +75,19 @@ def test_registry_02_reads_flat_web_bot_auth_parameters() -> None:
     assert card.purpose == "training"
     assert card.known_urls == ("https://example.com/about",)
     assert card.ips_uri == "https://example.com/ips.json"
+
+
+def test_registry_02_is_the_pinned_agent_card_profile() -> None:
+    card = parse_agent_card({"client_name": "Example Bot"})
+
+    assert DEFAULT_STANDARDS_PROFILE.agent_card == "draft-meunier-webbotauth-registry-02"
+    assert card.profile == DEFAULT_STANDARDS_PROFILE.agent_card
+
+
+def test_registry_02_retrieval_does_not_require_client_id() -> None:
+    card = parse_agent_card(
+        {"client_name": "Example Bot"},
+        retrieved_from="https://registry.example/cards/example-bot.json",
+    )
+
+    assert card.client_name == "Example Bot"
