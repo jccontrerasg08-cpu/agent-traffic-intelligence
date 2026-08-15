@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import importlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -63,7 +64,7 @@ def digest_field(body: bytes) -> str:
     return str(sf.Dictionary({"sha-256": hashlib.sha256(body).digest()}))
 
 
-def directory_and_signer() -> tuple[object, KeyResolver]:
+def directory_body_and_signer() -> tuple[object, bytes, KeyResolver]:
     private_key = ed25519.Ed25519PrivateKey.generate()
     public_bytes = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
@@ -77,7 +78,12 @@ def directory_and_signer() -> tuple[object, KeyResolver]:
     }
     key_id = jwk_thumbprint(raw_key)
     raw_key["kid"] = key_id
-    return parse_key_directory({"keys": [raw_key]}), KeyResolver(key_id, private_key)
+    body = json.dumps(
+        {"keys": [raw_key]},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return parse_key_directory(body), body, KeyResolver(key_id, private_key)
 
 
 def signed_directory_response(body: bytes, resolver: KeyResolver) -> MutableResponse:
@@ -107,8 +113,7 @@ def signed_directory_response(body: bytes, resolver: KeyResolver) -> MutableResp
 
 
 def test_valid_signed_directory_response_binds_key_to_request_authority() -> None:
-    body = b'{"keys":[]}'
-    directory, resolver = directory_and_signer()
+    directory, body, resolver = directory_body_and_signer()
     response = signed_directory_response(body, resolver)
 
     try:
