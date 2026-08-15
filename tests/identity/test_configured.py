@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
+from agent_traffic_intelligence.identity.configured import (
+    ProviderAwareVerificationManager,
+    signature_agent_profile_for,
+)
 from agent_traffic_intelligence.identity.context import VerificationContext
+from agent_traffic_intelligence.identity.crypto.signature_agent import SignatureAgentProfile
 from agent_traffic_intelligence.identity.models import (
     SourceAddressProvenance,
     VerificationOutcome,
 )
 from agent_traffic_intelligence.identity.policy import VerificationMode
-from agent_traffic_intelligence.identity.profiles import provider_profile
+from agent_traffic_intelligence.identity.profiles import (
+    CryptoInteroperabilityProfile,
+    provider_profile,
+)
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
 from agent_traffic_intelligence.models import (
@@ -134,3 +142,20 @@ def test_offline_mode_does_not_add_fcrdns_verifier(tmp_path) -> None:
     ).verify(event=event(), context=context(), claim=google_claim)
 
     assert all(item.method.value != "fcrdns" for item in resolution.methods)
+
+
+def test_runtime_maps_declarative_signature_agent_profile() -> None:
+    google = provider_profile("google")
+    assert google.crypto is not None
+    source = google.crypto.signature_agents[0]
+
+    assert (
+        signature_agent_profile_for(source)
+        is SignatureAgentProfile.IETF_HTTPSIG_PROTOCOL_01
+    )
+
+    legacy = replace(
+        source,
+        interoperability_profile=CryptoInteroperabilityProfile.CLOUDFLARE_LEGACY,
+    )
+    assert signature_agent_profile_for(legacy) is SignatureAgentProfile.CLOUDFLARE_LEGACY
