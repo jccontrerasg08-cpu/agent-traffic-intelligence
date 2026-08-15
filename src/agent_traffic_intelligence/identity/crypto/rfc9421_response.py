@@ -95,6 +95,7 @@ class Rfc9421ResponseVerifier:
         algorithm_id: str,
         expect_tag: str,
         required_components: frozenset[str] = frozenset(),
+        expected_key_id: str | None = None,
         max_age_seconds: int = 24 * 60 * 60,
     ) -> Rfc9421Result:
         if max_age_seconds <= 0:
@@ -152,10 +153,19 @@ class Rfc9421ResponseVerifier:
                 f"unexpected RFC 9421 response error: {type(exc).__name__}",
             )
 
+        if expected_key_id is not None:
+            verified = tuple(
+                candidate
+                for candidate in verified
+                if Rfc9421Verifier._scalar(candidate.parameters.get("keyid")) == expected_key_id
+            )
         if len(verified) != 1:
+            qualifier = (
+                f" for expected key id {expected_key_id!r}" if expected_key_id is not None else ""
+            )
             return Rfc9421Verifier._result(
                 VerificationOutcome.MISMATCH,
-                "verification tag matched an ambiguous number of response signatures",
+                f"verification tag matched an ambiguous number of response signatures{qualifier}",
             )
         item = verified[0]
         covered = {str(key): str(value) for key, value in item.covered_components.items()}

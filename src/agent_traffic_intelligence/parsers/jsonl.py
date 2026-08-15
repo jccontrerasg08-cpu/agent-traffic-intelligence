@@ -18,6 +18,9 @@ class ParseError(ValueError):
     """Raised when an input record cannot be safely normalized."""
 
 
+DEFAULT_MAX_LINE_CHARACTERS = 1_000_000
+
+
 def _required(record: Mapping[str, Any], *names: str) -> Any:
     for name in names:
         value = record.get(name)
@@ -61,16 +64,52 @@ def pseudonymize_client(raw_address: str, hash_key: bytes) -> str:
 
 
 def _request_id(
-    timestamp: datetime, client_id: str, method: str, path: str, status: int
+    timestamp: datetime,
+    client_id: str,
+    method: str,
+    path: str,
+    status: int,
+    *,
+    line_number: int | None = None,
 ) -> str:
-    payload = "\x1f".join(
-        (timestamp.isoformat(), client_id, method.upper(), path, str(status))
-    ).encode("utf-8")
+    parts: tuple[str, ...] = (
+        timestamp.isoformat(),
+        client_id,
+        method.upper(),
+        path,
+        str(status),
+    )
+    if line_number is not None:
+        parts = (*parts, str(line_number))
+    payload = "\x1f".join(parts).encode("utf-8")
     return "req:" + hashlib.blake2b(payload, digest_size=12, person=b"ati-req-v0").hexdigest()
 
 
+def _presence_flag(
+    record: Mapping[str, Any], *, flag_name: str, header_name: str
+) -> bool:
+    if flag_name not in record:
+        return bool(record.get(header_name))
+    value = record[flag_name]
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+    raise ParseError(f"{flag_name} must be a boolean or a recognized boolean string")
+
+
 def normalize_record(
-    record: Mapping[str, Any], *, hash_key: bytes | None, source: str = "jsonl"
+    record: Mapping[str, Any],
+    *,
+    hash_key: bytes | None,
+    source: str = "jsonl",
+    line_number: int | None = None,
 ) -> RequestEvent:
     """Normalize an access-log record while discarding sensitive values."""
 
@@ -107,7 +146,14 @@ def normalize_record(
     request_id = (
         str(request_id_raw)
         if request_id_raw not in (None, "")
-        else _request_id(timestamp, client_id, method, path, status)
+        else _request_id(
+            timestamp,
+            client_id,
+            method,
+            path,
+            status,
+            line_number=line_number,
+        )
     )
 
     return RequestEvent(
@@ -120,10 +166,20 @@ def normalize_record(
         bytes_sent=bytes_sent,
         http_version=http_version,
         user_agent=user_agent,
-        has_referer=bool(record.get("has_referer", record.get("http_referer"))),
-        has_cookie=bool(record.get("has_cookie", record.get("http_cookie"))),
-        has_accept_language=bool(
-            record.get("has_accept_language", record.get("http_accept_language"))
+        has_referer=_presence_flag(
+            record,
+            flag_name="has_referer",
+            header_name="http_referer",
+        ),
+        has_cookie=_presence_flag(
+            record,
+            flag_name="has_cookie",
+            header_name="http_cookie",
+        ),
+        has_accept_language=_presence_flag(
+            record,
+            flag_name="has_accept_language",
+            header_name="http_accept_language",
         ),
         ja4=ja4,
         source=source,
@@ -131,11 +187,19 @@ def normalize_record(
 
 
 def iter_jsonl(
-    stream: TextIO | Iterable[str], *, hash_key: bytes | None, source: str = "jsonl"
+    stream: TextIO | Iterable[str],
+    *,
+    hash_key: bytes | None,
+    source: str = "jsonl",
+    max_line_characters: int = DEFAULT_MAX_LINE_CHARACTERS,
 ) -> Iterator[RequestEvent]:
     """Yield normalized events from line-delimited JSON input."""
 
+    if max_line_characters < 1:
+        raise ValueError("max_line_characters must be positive")
     for line_number, raw_line in enumerate(stream, start=1):
+        if len(raw_line) > max_line_characters:
+            raise ParseError(f"line {line_number}: exceeds configured character limit")
         if not raw_line.strip():
             continue
         try:
@@ -145,7 +209,12 @@ def iter_jsonl(
         if not isinstance(payload, dict):
             raise ParseError(f"line {line_number}: expected a JSON object")
         try:
-            yield normalize_record(payload, hash_key=hash_key, source=source)
+            yield normalize_record(
+                payload,
+                hash_key=hash_key,
+                source=source,
+                line_number=line_number,
+            )
         except ParseError as exc:
             raise ParseError(f"line {line_number}: {exc}") from exc
 
@@ -206,11 +275,20 @@ def _safe_ephemeral_headers(record: Mapping[str, Any]) -> dict[str, str]:
 
 
 def normalize_record_with_context(
-    record: Mapping[str, Any], *, hash_key: bytes | None, source: str = "jsonl"
+    record: Mapping[str, Any],
+    *,
+    hash_key: bytes | None,
+    source: str = "jsonl",
+    line_number: int | None = None,
 ) -> tuple[RequestEvent, VerificationContext]:
     """Normalize a record and return a separate non-serializable verification context."""
 
-    event = normalize_record(record, hash_key=hash_key, source=source)
+    event = normalize_record(
+        record,
+        hash_key=hash_key,
+        source=source,
+        line_number=line_number,
+    )
     source_ip, provenance = _ephemeral_source_address(record)
     context = VerificationContext(
         source_ip=source_ip,
@@ -227,11 +305,19 @@ def normalize_record_with_context(
 
 
 def iter_jsonl_with_context(
-    stream: TextIO | Iterable[str], *, hash_key: bytes | None, source: str = "jsonl"
+    stream: TextIO | Iterable[str],
+    *,
+    hash_key: bytes | None,
+    source: str = "jsonl",
+    max_line_characters: int = DEFAULT_MAX_LINE_CHARACTERS,
 ) -> Iterator[tuple[RequestEvent, VerificationContext]]:
     """Yield normalized events paired with ephemeral verification contexts."""
 
+    if max_line_characters < 1:
+        raise ValueError("max_line_characters must be positive")
     for line_number, raw_line in enumerate(stream, start=1):
+        if len(raw_line) > max_line_characters:
+            raise ParseError(f"line {line_number}: exceeds configured character limit")
         if not raw_line.strip():
             continue
         try:
@@ -241,6 +327,11 @@ def iter_jsonl_with_context(
         if not isinstance(payload, dict):
             raise ParseError(f"line {line_number}: expected a JSON object")
         try:
-            yield normalize_record_with_context(payload, hash_key=hash_key, source=source)
+            yield normalize_record_with_context(
+                payload,
+                hash_key=hash_key,
+                source=source,
+                line_number=line_number,
+            )
         except ParseError as exc:
             raise ParseError(f"line {line_number}: {exc}") from exc

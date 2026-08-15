@@ -143,7 +143,9 @@ ATI accepts line-delimited JSON objects. Common Nginx-style keys are recognized:
 }
 ```
 
-The normalizer strips query strings before generating a `RequestEvent`. Raw IPs are replaced by keyed BLAKE2b pseudonyms. Prefer a pre-pseudonymized `client_id` when your edge can provide one.
+The normalizer strips query strings before generating a `RequestEvent`. Raw IPs are replaced by keyed BLAKE2b pseudonyms. Prefer a pre-pseudonymized `client_id` when your edge can provide one. Generated request identifiers include the input line number, so they are unique within one analyzed JSONL stream even when two records otherwise match.
+
+`ati analyze` rejects lines longer than 1,000,000 characters by default; use `--max-line-characters` to set a stricter or larger operational limit. When `--output` is used, ATI writes to a sibling temporary file and replaces the destination only after successful processing. This preserves the prior output on errors and makes it safe to intentionally use the same input and output path.
 
 See [`docs/schemas.md`](docs/schemas.md) and [`examples/nginx/ati-json.conf`](examples/nginx/ati-json.conf).
 

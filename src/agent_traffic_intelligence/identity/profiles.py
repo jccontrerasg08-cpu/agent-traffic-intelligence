@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any
+from urllib.parse import urlsplit
 
 from agent_traffic_intelligence.identity.models import BindingScope
 
@@ -84,9 +86,32 @@ def _required_string(value: Any, name: str) -> str:
     return value
 
 
+def _required_https_uri(value: Any, name: str) -> str:
+    uri = _required_string(value, name)
+    parsed = urlsplit(uri)
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise ValueError(f"{name} must be an absolute HTTPS URI without credentials or fragment")
+    return uri
+
+
+def _required_iso_date(value: Any, name: str) -> str:
+    raw = _required_string(value, name)
+    try:
+        date.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an ISO-8601 date") from exc
+    return raw
+
+
 def _parse_range_source(raw: dict[str, Any]) -> RangeSourceProfile:
     return RangeSourceProfile(
-        uri=_required_string(raw.get("uri"), "range source uri"),
+        uri=_required_https_uri(raw.get("uri"), "range source uri"),
         format_profile=_required_string(raw.get("format_profile"), "format_profile"),
         binding_scope=BindingScope(
             _required_string(raw.get("binding_scope"), "binding_scope")
@@ -94,7 +119,7 @@ def _parse_range_source(raw: dict[str, Any]) -> RangeSourceProfile:
         negative_semantics=NegativeSemantics(
             _required_string(raw.get("negative_semantics"), "negative_semantics")
         ),
-        reviewed_on=_required_string(raw.get("reviewed_on"), "reviewed_on"),
+        reviewed_on=_required_iso_date(raw.get("reviewed_on"), "reviewed_on"),
         subject=raw.get("subject") if isinstance(raw.get("subject"), str) else None,
         category=raw.get("category") if isinstance(raw.get("category"), str) else None,
     )
@@ -117,7 +142,7 @@ def _parse_fcrdns(raw: Any) -> FcrdnsProfile | None:
         binding_scope=BindingScope(
             _required_string(raw.get("binding_scope"), "fcrdns binding_scope")
         ),
-        reviewed_on=_required_string(raw.get("reviewed_on"), "fcrdns reviewed_on"),
+        reviewed_on=_required_iso_date(raw.get("reviewed_on"), "fcrdns reviewed_on"),
     )
 
 
@@ -135,10 +160,10 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
             raise ValueError("signature_agent profile must be an object")
         agents.append(
             CryptoSourceProfile(
-                signature_agent_uri=_required_string(
+                signature_agent_uri=_required_https_uri(
                     item.get("signature_agent_uri"), "signature_agent_uri"
                 ),
-                directory_uri=_required_string(
+                directory_uri=_required_https_uri(
                     item.get("directory_uri"), "directory_uri"
                 ),
                 interoperability_profile=CryptoInteroperabilityProfile(
@@ -156,7 +181,7 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
                 binding_scope=BindingScope(
                     _required_string(item.get("binding_scope"), "crypto binding_scope")
                 ),
-                reviewed_on=_required_string(
+                reviewed_on=_required_iso_date(
                     item.get("reviewed_on"), "crypto source reviewed_on"
                 ),
                 subject=(
@@ -166,7 +191,7 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
         )
     return CryptoProfile(
         signature_agents=tuple(agents),
-        reviewed_on=_required_string(raw.get("reviewed_on"), "crypto reviewed_on"),
+        reviewed_on=_required_iso_date(raw.get("reviewed_on"), "crypto reviewed_on"),
     )
 
 
@@ -194,13 +219,14 @@ def load_provider_profiles() -> dict[str, ProviderProfile]:
         range_sources_raw = raw.get("range_sources", [])
         if not isinstance(range_sources_raw, list):
             raise ValueError("range_sources must be a list")
+        range_sources: list[RangeSourceProfile] = []
+        for item in range_sources_raw:
+            if not isinstance(item, dict):
+                raise ValueError("range source profile must be an object")
+            range_sources.append(_parse_range_source(item))
         result[provider] = ProviderProfile(
             provider=provider,
-            range_sources=tuple(
-                _parse_range_source(item)
-                for item in range_sources_raw
-                if isinstance(item, dict)
-            ),
+            range_sources=tuple(range_sources),
             fcrdns=_parse_fcrdns(raw.get("fcrdns")),
             crypto=_parse_crypto(raw.get("crypto")),
         )

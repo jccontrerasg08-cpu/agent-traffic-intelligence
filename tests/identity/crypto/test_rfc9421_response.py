@@ -183,3 +183,19 @@ def test_selects_one_signature_by_expected_key_id() -> None:
     assert selected.outcome is VerificationOutcome.PASS
     assert selected.label == "bind2"
     assert selected.parameters["keyid"] == "test-key-2"
+
+
+def test_rejects_response_signature_from_an_unexpected_key_id() -> None:
+    resolver = KeyResolver()
+    response = signed_response(resolver)
+
+    result = Rfc9421ResponseVerifier(resolver).verify(
+        frozen_response(response),
+        algorithm_id="ed25519",
+        expect_tag="http-message-signatures-directory",
+        required_components=frozenset({"@authority", "content-digest"}),
+        expected_key_id="test-key-2",
+    )
+
+    assert result.outcome is VerificationOutcome.MISMATCH
+    assert "expected key id" in result.explanation

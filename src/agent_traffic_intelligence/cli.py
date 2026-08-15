@@ -6,8 +6,9 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Sequence
-from contextlib import ExitStack
+import tempfile
+from collections.abc import Iterator, Sequence
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import TextIO
 
@@ -43,6 +44,12 @@ def _parser() -> argparse.ArgumentParser:
     analyze.add_argument("input", help="JSONL input path, or '-' for stdin.")
     analyze.add_argument("--output", help="Write detection JSONL to this path; defaults to stdout.")
     analyze.add_argument("--source", default="jsonl", help="Source adapter label stored on events.")
+    analyze.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
     analyze.add_argument(
         "--hash-key-env",
         default="ATI_HASH_KEY",
@@ -81,10 +88,39 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _positive_integer(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
 def _open_input(path: str) -> tuple[TextIO, bool]:
     if path == "-":
         return sys.stdin, False
     return Path(path).open("r", encoding="utf-8"), True
+
+
+@contextmanager
+def _atomic_output(path: Path) -> Iterator[TextIO]:
+    """Write to a sibling temporary file and replace the destination on success."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        text=True,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            yield stream
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _source_cache_path() -> Path:
@@ -101,6 +137,12 @@ def _source_cache() -> SourceCache:
 def _analyze(args: argparse.Namespace) -> int:
     key_text = os.environ.get(args.hash_key_env)
     hash_key = key_text.encode("utf-8") if key_text else None
+    if hash_key is not None and len(hash_key) > 64:
+        print(
+            f"error: {args.hash_key_env} exceeds the 64-byte BLAKE2b key limit.",
+            file=sys.stderr,
+        )
+        return 2
     mode = VerificationMode(args.verification_mode)
     detector = (
         Detector(
@@ -114,36 +156,47 @@ def _analyze(args: argparse.Namespace) -> int:
     )
     processed = 0
 
-    input_stream, should_close_input = _open_input(args.input)
-    with ExitStack() as stack:
-        if should_close_input:
-            stack.callback(input_stream.close)
-        output_stream = (
-            stack.enter_context(Path(args.output).open("w", encoding="utf-8"))
-            if args.output
-            else sys.stdout
-        )
-        try:
+    try:
+        input_stream, should_close_input = _open_input(args.input)
+        with ExitStack() as stack:
+            if should_close_input:
+                stack.callback(input_stream.close)
+            output_stream = (
+                stack.enter_context(_atomic_output(Path(args.output)))
+                if args.output
+                else sys.stdout
+            )
             if args.verify_identity:
                 for event, context in iter_jsonl_with_context(
                     input_stream,
                     hash_key=hash_key,
                     source=args.source,
+                    max_line_characters=args.max_line_characters,
                 ):
                     detection = detector.detect(event, verification_context=context)
                     output_stream.write(_json_line(detection.to_dict()))
                     processed += 1
             else:
-                for event in iter_jsonl(input_stream, hash_key=hash_key, source=args.source):
+                for event in iter_jsonl(
+                    input_stream,
+                    hash_key=hash_key,
+                    source=args.source,
+                    max_line_characters=args.max_line_characters,
+                ):
                     detection = detector.detect(event)
                     output_stream.write(_json_line(detection.to_dict()))
                     processed += 1
-        except ParseError as exc:
-            print(
-                f"error: {exc}. If the input contains raw client IPs, set {args.hash_key_env}.",
-                file=sys.stderr,
-            )
-            return 2
+    except ParseError as exc:
+        hint = (
+            f" If the input contains raw client IPs, set {args.hash_key_env}."
+            if "hash key" in str(exc)
+            else ""
+        )
+        print(f"error: {exc}.{hint}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     print(f"processed={processed}", file=sys.stderr)
     return 0
@@ -164,6 +217,9 @@ def _explain(args: argparse.Namespace) -> int:
                     payload = json.loads(line)
                 except json.JSONDecodeError:
                     print(f"error: invalid JSON on line {line_number}", file=sys.stderr)
+                    return 2
+                if not isinstance(payload, dict):
+                    print(f"error: expected object on line {line_number}", file=sys.stderr)
                     return 2
                 if payload.get("request_id") == args.request_id:
                     print(json.dumps(payload, indent=2, sort_keys=True))

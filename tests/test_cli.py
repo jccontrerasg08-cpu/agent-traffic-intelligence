@@ -69,6 +69,67 @@ def test_analyze_fails_cleanly_without_hash_key_for_raw_ip(tmp_path, monkeypatch
     assert "ATI_HASH_KEY" in capsys.readouterr().err
 
 
+def test_analyze_replaces_same_input_output_only_after_success(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    path = tmp_path / "access.jsonl"
+    write_input(path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(path), "--output", str(path)])
+
+    assert code == 0
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert "processed=2" in capsys.readouterr().err
+
+
+def test_analyze_preserves_existing_output_when_parsing_fails(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    input_path = tmp_path / "access.jsonl"
+    output_path = tmp_path / "detections.jsonl"
+    input_path.write_text('{"not":"a complete event"}\n', encoding="utf-8")
+    output_path.write_text("previous-successful-output\n", encoding="utf-8")
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--output", str(output_path)])
+
+    assert code == 2
+    assert output_path.read_text(encoding="utf-8") == "previous-successful-output\n"
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_reports_missing_input_without_traceback(tmp_path, capsys) -> None:
+    missing_path = tmp_path / "missing.jsonl"
+
+    code = main(["analyze", str(missing_path)])
+
+    assert code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_rejects_oversized_hash_key(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "x" * 65)
+
+    code = main(["analyze", str(input_path)])
+
+    assert code == 2
+    assert "64-byte" in capsys.readouterr().err
+
+
+def test_analyze_respects_maximum_line_length(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--max-line-characters", "10"])
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
 def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     code = main(["registry", "validate"])
 
