@@ -28,9 +28,12 @@ def test_perplexity_sources_are_agent_scoped() -> None:
 def test_google_profile_keeps_documented_fcrdns_suffixes() -> None:
     profile = provider_profile("google")
     assert profile.fcrdns is not None
-    assert "googlebot.com" in profile.fcrdns.allowed_suffixes
-    assert "google.com" in profile.fcrdns.allowed_suffixes
-    assert "gae.googleusercontent.com" in profile.fcrdns.allowed_suffixes
+    documented_suffixes = {
+        "googlebot.com",
+        "google.com",
+        "gae.googleusercontent.com",
+    }
+    assert documented_suffixes <= set(profile.fcrdns.allowed_suffixes)
 
 
 def test_default_standards_profile_is_pinned() -> None:
