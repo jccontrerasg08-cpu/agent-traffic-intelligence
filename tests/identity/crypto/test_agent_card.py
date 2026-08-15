@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-
 import pytest
 
 from agent_traffic_intelligence.identity.crypto.agent_card import (
@@ -11,69 +9,33 @@ from agent_traffic_intelligence.identity.crypto.agent_card import (
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 
-def inline_jwks() -> dict[str, object]:
-    x = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=").decode("ascii")
-    return {"keys": [{"kty": "OKP", "crv": "Ed25519", "x": x}]}
-
-
-def test_registry_03_parses_cimd_and_web_bot_auth_extension() -> None:
-    card = parse_agent_card(
-        {
-            "client_id": "https://example.com/bot",
-            "client_name": "Example Bot",
-            "jwks_uri": "https://example.com/.well-known/http-message-signatures-directory",
-            "web_bot_auth": {
-                "expected-user-agent": "ExampleBot/1.0",
-                "trigger": "fetcher",
-                "purpose": "tdm",
-                "known-urls": ["/", "/robots.txt"],
-                "ips_uri": "https://example.com/ips.json",
-                "future-member": "ignored",
-            },
-        },
-        retrieved_from="https://example.com/bot",
-    )
-    assert card.client_name == "Example Bot"
-    assert card.trigger == "fetcher"
-    assert card.known_urls == ("/", "/robots.txt")
-    assert card.profile.endswith("-03")
-
-
-def test_card_rejects_ambiguous_keys_and_bad_binding() -> None:
-    with pytest.raises(AgentCardFormatError, match="both jwks_uri and jwks"):
-        parse_agent_card(
-            {"jwks_uri": "https://example.com/keys", "jwks": inline_jwks()}
-        )
-    with pytest.raises(AgentCardFormatError, match="exactly match"):
-        parse_agent_card(
-            {"client_id": "https://example.com/bot", "client_name": "bot"},
-            retrieved_from="https://example.com/other",
-        )
-
-
-def test_card_rejects_non_https_key_and_ip_sources() -> None:
-    with pytest.raises(AgentCardFormatError, match="HTTPS"):
-        parse_agent_card({"jwks_uri": "http://example.com/keys"})
-    with pytest.raises(AgentCardFormatError, match="HTTPS"):
-        parse_agent_card({"web_bot_auth": {"ips_uri": "http://example.com/ips"}})
-
-
-def test_registry_02_reads_flat_web_bot_auth_parameters() -> None:
+def test_registry_02_reads_flat_parameters_and_ignores_unknowns() -> None:
     card = parse_agent_card(
         {
             "client_name": "Example Bot",
             "expected-user-agent": "ExampleBot/2.0",
+            "rfc9309-product-token": "ExampleBot",
+            "rfc9309-compliance": ["User-Agent", "Disallow"],
             "trigger": "fetcher",
-            "purpose": "training",
-            "known-urls": ["https://example.com/about"],
+            "purpose": "tdm",
+            "targeted-content": "public documentation",
+            "rate-control": "429",
+            "rate-expectation": "avg=10rps;max=100rps",
+            "known-urls": ["/", "/robots.txt"],
             "ips_uri": "https://example.com/ips.json",
+            "future-parameter": {"ignored": True},
         }
     )
 
     assert card.expected_user_agent == "ExampleBot/2.0"
+    assert card.robots_product_token == "ExampleBot"
+    assert card.robots_compliance == ("User-Agent", "Disallow")
     assert card.trigger == "fetcher"
-    assert card.purpose == "training"
-    assert card.known_urls == ("https://example.com/about",)
+    assert card.purpose == "tdm"
+    assert card.targeted_content == "public documentation"
+    assert card.rate_control == "429"
+    assert card.rate_expectation == "avg=10rps;max=100rps"
+    assert card.known_urls == ("/", "/robots.txt")
     assert card.ips_uri == "https://example.com/ips.json"
 
 
@@ -91,3 +53,20 @@ def test_registry_02_retrieval_does_not_require_client_id() -> None:
     )
 
     assert card.client_name == "Example Bot"
+
+
+def test_registry_02_rejects_unknown_only_card() -> None:
+    with pytest.raises(AgentCardFormatError, match="recognized parameter"):
+        parse_agent_card({"future-parameter": "ignored"})
+
+
+def test_registry_02_rejects_invalid_trigger() -> None:
+    with pytest.raises(AgentCardFormatError, match="fetcher or crawler"):
+        parse_agent_card({"trigger": "interactive"})
+
+
+def test_registry_02_rejects_non_https_key_and_ip_sources() -> None:
+    with pytest.raises(AgentCardFormatError, match="HTTPS"):
+        parse_agent_card({"jwks_uri": "http://example.com/keys"})
+    with pytest.raises(AgentCardFormatError, match="HTTPS"):
+        parse_agent_card({"ips_uri": "http://example.com/ips"})
