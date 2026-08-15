@@ -1,4 +1,4 @@
-"""Policy and identity binding for the pinned Web Bot Auth architecture profile."""
+"""Policy and identity binding for the pinned Web Bot Auth protocol profile."""
 
 from __future__ import annotations
 
@@ -32,12 +32,17 @@ from agent_traffic_intelligence.identity.sources.trust import (
     SourceTrustPolicy,
     canonicalize_source_uri,
 )
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim
 
 _WEB_BOT_AUTH_TAG = "web-bot-auth"
 _MAX_VALIDITY_SECONDS = 24 * 60 * 60
 _CLOCK_SKEW_SECONDS = 5
 _KEY_PARAM_RE = re.compile(r';key="([^"\\]+)"')
+_SOURCE_PROFILE = (
+    f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+"
+    f"{DEFAULT_STANDARDS_PROFILE.message_signatures_directory}"
+)
 
 
 class RfcVerifier(Protocol):
@@ -373,7 +378,7 @@ class WebBotAuthVerifier:
             subject=subject,
             explanation=explanation,
             source_uri=self._directory_uri,
-            source_profile="draft-meunier-web-bot-auth-architecture-05+directory-05",
+            source_profile=_SOURCE_PROFILE,
             retrieved_at=None,
             expires_at=None,
             source_sha256=None,
