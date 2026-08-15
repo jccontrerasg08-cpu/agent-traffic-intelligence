@@ -5,9 +5,17 @@ from __future__ import annotations
 import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from types import MappingProxyType
 from typing import Any, cast
 from urllib.parse import urlsplit
+
+from agent_traffic_intelligence.identity.crypto.rfc9421 import (
+    PublicKeyResolver,
+    Rfc9421Result,
+    Rfc9421Verifier,
+)
+from agent_traffic_intelligence.identity.models import VerificationOutcome
 
 
 class Rfc9421ResponseUnavailable(RuntimeError):
@@ -72,3 +80,116 @@ def response_component_resolver_class() -> type[Any]:
             return authority
 
     return ResponseComponentResolver
+
+
+class Rfc9421ResponseVerifier:
+    """Verify RFC 9421 response signatures while preserving request context."""
+
+    def __init__(self, key_resolver: PublicKeyResolver) -> None:
+        self._key_resolver = key_resolver
+
+    def verify(
+        self,
+        message: ResponseMessage,
+        *,
+        algorithm_id: str,
+        expect_tag: str,
+        required_components: frozenset[str] = frozenset(),
+        max_age_seconds: int = 24 * 60 * 60,
+    ) -> Rfc9421Result:
+        if max_age_seconds <= 0:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.ERROR,
+                "maximum signature age must be positive",
+            )
+        if not self._header(message.headers, "signature") or not self._header(
+            message.headers, "signature-input"
+        ):
+            return Rfc9421Verifier._result(
+                VerificationOutcome.UNAVAILABLE,
+                "response Signature and Signature-Input headers are required",
+            )
+        try:
+            hms = importlib.import_module("http_message_signatures")
+        except ImportError:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.UNAVAILABLE,
+                "optional http-message-signatures dependency is not installed",
+            )
+
+        algorithms = getattr(hms, "algorithms", None)
+        algorithm = getattr(algorithms, "signature_algorithms", {}).get(algorithm_id)
+        if algorithm is None:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.UNAVAILABLE,
+                f"unsupported RFC 9421 algorithm: {algorithm_id}",
+            )
+
+        try:
+            verifier = hms.HTTPMessageVerifier(
+                signature_algorithm=algorithm,
+                key_resolver=self._key_resolver,
+                component_resolver_class=response_component_resolver_class(),
+            )
+            verified = verifier.verify(
+                message,
+                max_age=timedelta(seconds=max_age_seconds),
+                expect_tag=expect_tag,
+            )
+        except LookupError:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.UNAVAILABLE,
+                "response signature key is unavailable",
+            )
+        except hms.HTTPMessageSignaturesException as exc:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.MISMATCH,
+                f"RFC 9421 response verification failed: {exc}",
+            )
+        except Exception as exc:  # pragma: no cover
+            return Rfc9421Verifier._result(
+                VerificationOutcome.ERROR,
+                f"unexpected RFC 9421 response error: {type(exc).__name__}",
+            )
+
+        if len(verified) != 1:
+            return Rfc9421Verifier._result(
+                VerificationOutcome.MISMATCH,
+                "verification tag matched an ambiguous number of response signatures",
+            )
+        item = verified[0]
+        covered = {str(key): str(value) for key, value in item.covered_components.items()}
+        names = frozenset(
+            name
+            for key in covered
+            if (name := Rfc9421Verifier._component_name(key)) != "@signature-params"
+        )
+        if not required_components.issubset(names):
+            return Rfc9421Verifier._result(
+                VerificationOutcome.MISMATCH,
+                "valid response signature did not cover every ATI-required component",
+            )
+        parameters = {
+            str(key): Rfc9421Verifier._scalar(value)
+            for key, value in item.parameters.items()
+        }
+        nonce_value = parameters.get("nonce")
+        verified_algorithm = getattr(item.algorithm, "algorithm_id", algorithm_id)
+        return Rfc9421Result(
+            outcome=VerificationOutcome.PASS,
+            explanation="RFC 9421 response signature verified",
+            label=str(item.label),
+            algorithm_id=str(verified_algorithm),
+            covered_components=covered,
+            covered_component_names=names,
+            parameters=parameters,
+            nonce=str(nonce_value) if nonce_value is not None else None,
+        )
+
+    @staticmethod
+    def _header(headers: Mapping[str, str], name: str) -> str | None:
+        target = name.casefold()
+        for key, value in headers.items():
+            if key.casefold() == target:
+                return value
+        return None
