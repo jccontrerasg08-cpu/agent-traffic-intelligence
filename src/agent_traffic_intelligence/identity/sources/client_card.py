@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from agent_traffic_intelligence.identity.crypto.agent_card import (
     AgentCard,
@@ -20,7 +20,7 @@ from agent_traffic_intelligence.identity.sources.fetcher import (
 )
 
 
-class ClientCardFetchStatus(str, Enum):
+class ClientCardFetchStatus(StrEnum):
     """Privacy-safe outcome for one client metadata document retrieval."""
 
     SUCCESS = "success"
