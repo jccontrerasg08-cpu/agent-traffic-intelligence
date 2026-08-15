@@ -33,7 +33,7 @@ def test_default_standards_profile_is_pinned() -> None:
         == "draft-meunier-http-message-signatures-directory-05"
     )
     assert profile.jafar == "draft-illyes-webbotauth-jafar-00"
-    assert profile.agent_card == "draft-meunier-webbotauth-registry-02"
+    assert profile.agent_card == "draft-meunier-webbotauth-registry-03"
 
 
 def test_google_crypto_profile_separates_identity_and_directory_uri() -> None:
