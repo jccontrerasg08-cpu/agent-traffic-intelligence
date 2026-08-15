@@ -20,6 +20,21 @@ class NegativeSemantics(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CryptoInteroperabilityProfile(StrEnum):
+    """Signature-Agent syntax/protocol profile selected for a crypto source."""
+
+    IETF_HTTPSIG_PROTOCOL_01 = "ietf-httpsig-protocol-01"
+    CLOUDFLARE_LEGACY = "cloudflare-legacy"
+
+
+class CryptoDiscoveryType(StrEnum):
+    """Key/identity discovery mechanism declared by a crypto source."""
+
+    DIRECTORY = "directory"
+    JWKS_URI = "jwks_uri"
+    CIMD = "cimd"
+
+
 @dataclass(frozen=True, slots=True)
 class RangeSourceProfile:
     uri: str
@@ -42,6 +57,8 @@ class FcrdnsProfile:
 class CryptoSourceProfile:
     signature_agent_uri: str
     directory_uri: str
+    interoperability_profile: CryptoInteroperabilityProfile
+    discovery_type: CryptoDiscoveryType
     binding_scope: BindingScope
     reviewed_on: str
     subject: str | None = None
@@ -123,6 +140,18 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
                 ),
                 directory_uri=_required_string(
                     item.get("directory_uri"), "directory_uri"
+                ),
+                interoperability_profile=CryptoInteroperabilityProfile(
+                    _required_string(
+                        item.get("interoperability_profile"),
+                        "crypto interoperability_profile",
+                    )
+                ),
+                discovery_type=CryptoDiscoveryType(
+                    _required_string(
+                        item.get("discovery_type"),
+                        "crypto discovery_type",
+                    )
                 ),
                 binding_scope=BindingScope(
                     _required_string(item.get("binding_scope"), "crypto binding_scope")
