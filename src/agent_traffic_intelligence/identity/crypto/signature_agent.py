@@ -19,17 +19,32 @@ class SignatureAgentUnavailable(RuntimeError):
 class SignatureAgentProfile(StrEnum):
     """Explicitly selected Signature-Agent interoperability syntax."""
 
-    IETF_DIRECTORY_05 = "ietf-directory-05"
-    IETF_CIMD_REGISTRY_03 = "ietf-cimd-registry-03"
+    IETF_HTTPSIG_PROTOCOL_01 = "ietf-httpsig-protocol-01"
     CLOUDFLARE_LEGACY = "cloudflare-legacy"
+
+
+class SignatureAgentDiscoveryType(StrEnum):
+    """Discovery mechanisms defined by the current Web Bot Auth protocol."""
+
+    DIRECTORY = "directory"
+    JWKS_URI = "jwks_uri"
+    CIMD = "cimd"
 
 
 @dataclass(frozen=True, slots=True)
 class SignatureAgentReference:
     label: str | None
     uri: str
-    card_type: str | None = None
+    discovery_type: SignatureAgentDiscoveryType = SignatureAgentDiscoveryType.DIRECTORY
     legacy: bool = False
+
+    @property
+    def card_type(self) -> str | None:
+        """Compatibility view retained for callers of the earlier experimental API."""
+
+        if self.discovery_type is SignatureAgentDiscoveryType.DIRECTORY:
+            return None
+        return self.discovery_type.value
 
 
 class SignatureAgentParser(Protocol):
@@ -56,7 +71,7 @@ class StructuredFieldSignatureAgentParser:
     def __init__(
         self,
         *,
-        profile: SignatureAgentProfile = SignatureAgentProfile.IETF_DIRECTORY_05,
+        profile: SignatureAgentProfile = SignatureAgentProfile.IETF_HTTPSIG_PROTOCOL_01,
     ) -> None:
         self._profile = profile
 
@@ -68,6 +83,16 @@ class StructuredFieldSignatureAgentParser:
         if self._profile is SignatureAgentProfile.CLOUDFLARE_LEGACY:
             return (self._parse_legacy(structured_fields, raw),)
         return self._parse_dictionary(structured_fields, raw)
+
+    @staticmethod
+    def _discovery_type(raw_type: object | None) -> SignatureAgentDiscoveryType | None:
+        if raw_type is None:
+            return SignatureAgentDiscoveryType.DIRECTORY
+        value = str(raw_type).casefold()
+        try:
+            return SignatureAgentDiscoveryType(value)
+        except ValueError:
+            return None
 
     def _parse_dictionary(
         self,
@@ -91,24 +116,17 @@ class StructuredFieldSignatureAgentParser:
                 )
             params = getattr(member, "params", {})
             raw_type = params.get("type") if hasattr(params, "get") else None
-            card_type = str(raw_type).casefold() if raw_type is not None else None
-            if (
-                self._profile is SignatureAgentProfile.IETF_CIMD_REGISTRY_03
-                and card_type != "cimd"
-            ):
-                raise SignatureAgentFormatError(
-                    "CIMD Signature-Agent dictionary members must declare type=cimd"
-                )
+            discovery_type = self._discovery_type(raw_type)
+            if discovery_type is None:
+                continue
             references.append(
                 SignatureAgentReference(
                     label=str(label),
                     uri=value,
-                    card_type=card_type,
+                    discovery_type=discovery_type,
                     legacy=False,
                 )
             )
-        if not references:
-            raise SignatureAgentFormatError("Signature-Agent dictionary must not be empty")
         return tuple(references)
 
     @staticmethod
@@ -128,4 +146,9 @@ class StructuredFieldSignatureAgentParser:
         value = getattr(item, "value", None)
         if not isinstance(value, str) or not value:
             raise SignatureAgentFormatError("legacy Signature-Agent must be a string")
-        return SignatureAgentReference(label=None, uri=value, legacy=True)
+        return SignatureAgentReference(
+            label=None,
+            uri=value,
+            discovery_type=SignatureAgentDiscoveryType.DIRECTORY,
+            legacy=True,
+        )
