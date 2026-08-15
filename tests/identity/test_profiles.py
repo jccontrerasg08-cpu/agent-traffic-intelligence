@@ -27,10 +27,13 @@ def test_google_profile_keeps_documented_fcrdns_suffixes() -> None:
 def test_default_standards_profile_is_pinned() -> None:
     profile = DEFAULT_STANDARDS_PROFILE
     assert profile.http_message_signatures == "RFC9421"
-    assert profile.web_bot_auth_architecture == "draft-meunier-web-bot-auth-architecture-05"
+    assert (
+        profile.web_bot_auth_protocol
+        == "draft-meunier-webbotauth-httpsig-protocol-01"
+    )
     assert (
         profile.message_signatures_directory
-        == "draft-meunier-http-message-signatures-directory-05"
+        == "draft-meunier-webbotauth-httpsig-directory-00"
     )
     assert profile.jafar == "draft-illyes-webbotauth-jafar-00"
     assert profile.agent_card == "draft-meunier-webbotauth-registry-03"
