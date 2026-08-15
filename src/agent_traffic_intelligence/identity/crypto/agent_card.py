@@ -97,11 +97,14 @@ def parse_agent_card(
         raise AgentCardFormatError("agent card must not contain both jwks_uri and jwks")
     inline = parse_key_directory(raw_jwks) if raw_jwks is not None else None
 
-    extension = decoded.get("web_bot_auth", {})
-    if extension is None:
-        extension = {}
-    if not isinstance(extension, Mapping):
+    raw_extension = decoded.get("web_bot_auth")
+    if raw_extension is None:
+        extension: Mapping[str, Any] = decoded
+    elif isinstance(raw_extension, Mapping):
+        extension = raw_extension
+    else:
         raise AgentCardFormatError("web_bot_auth must be a JSON object")
+
     trigger = _string(extension.get("trigger"))
     if trigger not in (None, "fetcher", "crawler"):
         raise AgentCardFormatError("web_bot_auth.trigger must be fetcher or crawler")
