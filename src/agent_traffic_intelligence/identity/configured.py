@@ -34,6 +34,7 @@ from agent_traffic_intelligence.identity.profiles import (
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
 
 
@@ -158,7 +159,7 @@ class _CryptoAdapter:
                 subject=self.profile.subject,
                 explanation=f"cached key directory could not be validated: {exc}",
                 source_uri=document.metadata.uri,
-                source_profile="directory-05",
+                source_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
                 retrieved_at=document.metadata.retrieved_at,
                 expires_at=document.metadata.expires_at,
                 source_sha256=document.metadata.sha256,
