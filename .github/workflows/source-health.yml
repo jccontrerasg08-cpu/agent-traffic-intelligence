@@ -1,0 +1,49 @@
+name: Identity Source Health
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: identity-source-health
+  cancel-in-progress: false
+
+jobs:
+  health:
+    name: Refresh and validate configured sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ATI core
+        run: python -m pip install --disable-pip-version-check .
+
+      - name: Refresh official identity sources
+        env:
+          ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
+        run: ati sources refresh
+
+      - name: Validate refreshed sources offline
+        env:
+          ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
+        run: ati sources validate
+
+      - name: Print provenance-safe source status
+        env:
+          ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
+        run: ati sources status

@@ -1,0 +1,30 @@
+name: Identity source changed
+description: Report a provider range, DNS, key-directory, Agent Card, or standards-profile change.
+title: "source: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Official source URL
+    validations:
+      required: true
+  - type: input
+    id: observed
+    attributes:
+      label: Date/time observed
+      description: Include timezone.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What changed?
+      description: Describe schema, semantics, ranges, keys, draft revision, or documentation behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproduction / evidence
+      description: Do not include secrets, raw production IPs, cookies, Authorization, or request bodies.

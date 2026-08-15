@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agent_traffic_intelligence.identity.models import VerificationResolution
 
 
 class ActorType(StrEnum):
@@ -30,6 +34,7 @@ class VerificationState(StrEnum):
     CLAIMED = "claimed"
     VERIFIED = "verified"
     FAILED = "failed"
+    CONFLICTED = "conflicted"
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +150,7 @@ class Detection:
     evidence: tuple[Evidence, ...]
     features: Mapping[str, float | int | bool | str | None]
     ruleset_version: str
+    verification: VerificationResolution | None = None
 
     def __post_init__(self) -> None:
         for name in ("automation_score", "ai_score", "identity_confidence", "risk_score"):
@@ -153,7 +159,8 @@ class Detection:
                 raise ValueError(f"{name} must be between 0 and 1")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
+            "schema_version": 1,
             "request_id": self.request_id,
             "automation_score": self.automation_score,
             "ai_score": self.ai_score,
@@ -164,3 +171,6 @@ class Detection:
             "features": dict(self.features),
             "ruleset_version": self.ruleset_version,
         }
+        if self.verification is not None:
+            payload["verification"] = self.verification.to_dict()
+        return payload

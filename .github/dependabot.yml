@@ -7,12 +7,19 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      development-dependencies:
+      python-development:
         dependency-type: development
+      python-verification:
+        patterns:
+          - "http-message-signatures"
+          - "cryptography"
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"

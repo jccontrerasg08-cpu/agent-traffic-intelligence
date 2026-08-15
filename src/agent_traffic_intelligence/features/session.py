@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections import Counter, defaultdict, deque
+from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 from datetime import timedelta
+from itertools import pairwise
 
 from agent_traffic_intelligence.features.request import is_asset_path
 from agent_traffic_intelligence.models import RequestEvent
@@ -21,26 +22,49 @@ class _Observation:
 class SessionFeatureState:
     """Maintain bounded per-client histories and derive behavioral features."""
 
-    def __init__(self, *, max_events_per_client: int = 128, window_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        *,
+        max_events_per_client: int = 128,
+        max_clients: int = 10_000,
+        window_seconds: int = 300,
+    ) -> None:
         if max_events_per_client < 2:
             raise ValueError("max_events_per_client must be at least 2")
+        if max_clients < 1:
+            raise ValueError("max_clients must be positive")
         if window_seconds <= 0:
             raise ValueError("window_seconds must be positive")
         self._max_events = max_events_per_client
+        self._max_clients = max_clients
         self._window = timedelta(seconds=window_seconds)
-        self._histories: dict[str, deque[_Observation]] = defaultdict(
-            lambda: deque(maxlen=self._max_events)
-        )
+        self._histories: OrderedDict[str, deque[_Observation]] = OrderedDict()
+        self._evicted_clients = 0
 
     def update(self, event: RequestEvent) -> dict[str, float | int]:
-        history = self._histories[event.client_id]
+        history = self._histories.pop(event.client_id, None)
+        if history is None:
+            if len(self._histories) >= self._max_clients:
+                self._histories.popitem(last=False)
+                self._evicted_clients += 1
+            history = deque(maxlen=self._max_events)
         history.append(_Observation(event=event, is_asset=is_asset_path(event.path)))
 
         cutoff = event.timestamp - self._window
         while history and history[0].event.timestamp < cutoff:
             history.popleft()
+        self._histories[event.client_id] = history
 
         return self._snapshot(history)
+
+    def resource_metrics(self) -> dict[str, int]:
+        """Return bounded-state capacity metrics for operational observability."""
+
+        return {
+            "active_client_count": len(self._histories),
+            "evicted_client_count": self._evicted_clients,
+            "max_client_count": self._max_clients,
+        }
 
     @staticmethod
     def _snapshot(history: deque[_Observation]) -> dict[str, float | int]:
@@ -54,7 +78,7 @@ class SessionFeatureState:
         duration = max(0.0, (last - first).total_seconds())
         intervals = [
             max(0.0, (current.timestamp - previous.timestamp).total_seconds())
-            for previous, current in zip(events, events[1:], strict=False)
+            for previous, current in pairwise(events)
         ]
         mean_interval = statistics.fmean(intervals) if intervals else 0.0
         if len(intervals) >= 2 and mean_interval > 0:

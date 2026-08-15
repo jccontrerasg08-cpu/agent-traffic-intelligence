@@ -1,58 +1,39 @@
-# GitHub Bootstrap
+# GitHub Bootstrap Status
 
-The source tree is ready to publish, but creating the remote repository is an account-level action and is intentionally separate from the source bootstrap.
+Repository: `jccontrerasg08-cpu/agent-traffic-intelligence`
 
-## Create the public repository
+The public remote was created and the V0 source tree was published on 2026-08-14.
 
-Recommended repository name:
+## Completed
 
-`agent-traffic-intelligence`
+- public repository created with `main` as the default branch;
+- V0 design, implementation, tests, schemas, examples, and operator docs published;
+- CI enabled for Python 3.11, 3.12, and 3.13;
+- Ruff, Mypy, pytest/coverage, compile, and CLI smoke checks enabled;
+- CodeQL workflow enabled;
+- dependency review workflow enabled for pull requests;
+- Dependabot configured for Python development dependencies and GitHub Actions;
+- CODEOWNERS, issue forms, and pull-request template added;
+- workflow token permissions kept read-only by default;
+- external Actions pinned to full commit SHAs.
 
-Do not initialize the remote with a README, license, or `.gitignore`; those already exist locally.
+## Repository settings to review in GitHub
 
-With GitHub CLI from the repository directory:
+Source-controlled configuration cannot enable every repository-level security setting. Review [`repository-settings.md`](repository-settings.md) and enable the settings supported by the account/repository plan, especially:
 
-```bash
-gh repo create jccontrerasg08-cpu/agent-traffic-intelligence \
-  --public \
-  --source=. \
-  --remote=origin \
-  --push
-```
-
-Or create an empty public repository in the GitHub web UI, then:
-
-```bash
-git remote add origin git@github.com:jccontrerasg08-cpu/agent-traffic-intelligence.git
-git push -u origin main
-```
-
-HTTPS alternative:
-
-```bash
-git remote add origin https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence.git
-git push -u origin main
-```
-
-## Immediately after first push
-
-Apply the recommendations in [`repository-settings.md`](repository-settings.md), especially:
-
-- read-only default `GITHUB_TOKEN` permissions;
 - secret scanning and push protection;
 - Dependabot alerts and security updates;
-- CodeQL/code scanning;
 - private vulnerability reporting;
-- branch protection or rulesets once CI has completed successfully;
-- squash merge and linear history for routine contributions.
+- branch protection or a ruleset requiring the CI checks after their names are stable;
+- squash merge and linear history if that is the preferred contribution policy.
 
-## First checks
+## Before the first tagged release
 
-After the first push, confirm these workflows are green:
+1. Run a shadow-mode benchmark on real but privacy-sanitized traffic.
+2. Record false-positive rates and calibration results.
+3. Confirm the agent registry against current primary sources.
+4. Review third-party licenses again for any newly incorporated code or data.
+5. Build and install the wheel in a clean environment.
+6. Generate checksums and release notes from a clean tagged commit.
 
-1. `CI`
-2. `CodeQL`
-
-`Dependency Review` runs on pull requests.
-
-Then open a small documentation PR to verify the branch-protection workflow before making protection mandatory.
+V0 remains intentionally observe-only. Enabling repository security settings does not change that runtime boundary.
