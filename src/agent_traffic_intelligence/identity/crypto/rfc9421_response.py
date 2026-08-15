@@ -159,6 +159,11 @@ class Rfc9421ResponseVerifier:
                 for candidate in verified
                 if Rfc9421Verifier._scalar(candidate.parameters.get("keyid")) == expected_key_id
             )
+            if not verified:
+                return Rfc9421Verifier._result(
+                    VerificationOutcome.MISMATCH,
+                    "no valid response signature matched the expected keyid",
+                )
         if len(verified) != 1:
             qualifier = (
                 f" for expected key id {expected_key_id!r}" if expected_key_id is not None else ""
