@@ -6,10 +6,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-hms = pytest.importorskip("http_message_signatures")
-algorithms = pytest.importorskip("http_message_signatures.algorithms")
-ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
-
 from agent_traffic_intelligence.identity.crypto.rfc9421_response import (
     ResponseMessage,
     ResponseRequest,
@@ -20,6 +16,10 @@ from agent_traffic_intelligence.identity.crypto.signature_agent import (
     structured_fields_module,
 )
 from agent_traffic_intelligence.identity.models import VerificationOutcome
+
+hms = pytest.importorskip("http_message_signatures")
+algorithms = pytest.importorskip("http_message_signatures.algorithms")
+ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
 
 
 class KeyResolver:
