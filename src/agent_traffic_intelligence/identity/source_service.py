@@ -24,6 +24,8 @@ from agent_traffic_intelligence.identity.sources.models import (
     ValidationStatus,
 )
 
+_DIRECTORY_MEDIA_TYPE = "application/http-message-signatures-directory+json"
+
 
 @dataclass(frozen=True, slots=True)
 class SourceSpec:
@@ -148,6 +150,16 @@ def _source_created_at(spec: SourceSpec, content: bytes) -> datetime | None:
     raise ValueError(f"unsupported source type: {spec.source_type.value}")
 
 
+def _validate_media_type(spec: SourceSpec, content_type: str | None) -> None:
+    if spec.source_type is not SourceType.KEY_DIRECTORY:
+        return
+    if content_type is None:
+        raise ValueError(f"key directory media type must be {_DIRECTORY_MEDIA_TYPE}")
+    essence = content_type.split(";", 1)[0].strip().casefold()
+    if essence != _DIRECTORY_MEDIA_TYPE:
+        raise ValueError(f"key directory media type must be {_DIRECTORY_MEDIA_TYPE}")
+
+
 def _max_age_seconds(cache_control: str | None) -> int | None:
     if cache_control is None:
         return None
@@ -196,6 +208,7 @@ def _key_authority_bindings(
 def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocument:
     if result.body is None:
         raise ValueError("fresh identity source response must contain a body")
+    _validate_media_type(spec, result.content_type)
     retrieved_at = datetime.now(UTC)
     source_created_at = _source_created_at(spec, result.body)
     key_authority_bindings = _key_authority_bindings(
