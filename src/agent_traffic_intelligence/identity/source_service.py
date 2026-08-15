@@ -23,6 +23,7 @@ from agent_traffic_intelligence.identity.sources.models import (
     SourceType,
     ValidationStatus,
 )
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 _DIRECTORY_MEDIA_TYPE = "application/http-message-signatures-directory+json"
 
@@ -55,7 +56,7 @@ def configured_sources() -> tuple[SourceSpec, ...]:
                     provider=provider.provider,
                     uri=source.directory_uri,
                     source_type=SourceType.KEY_DIRECTORY,
-                    parser_profile="directory-05",
+                    parser_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
                     binding_scope=source.binding_scope,
                 )
                 for source in provider.crypto.signature_agents
