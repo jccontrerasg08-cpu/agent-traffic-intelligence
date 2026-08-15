@@ -8,10 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from agent_traffic_intelligence.identity.crypto.directory import (
-    KeyDirectory,
-    parse_key_directory,
-)
+from agent_traffic_intelligence.identity.crypto.jwk_set import JwkSet, parse_jwk_set
 
 
 class AgentCardFormatError(ValueError):
@@ -50,7 +47,7 @@ class AgentCard:
     logo_uri: str | None
     contacts: tuple[str, ...]
     jwks_uri: str | None
-    inline_jwks: KeyDirectory | None
+    inline_jwks: JwkSet | None
     expected_user_agent: str | None
     robots_product_token: str | None
     robots_compliance: tuple[str, ...]
@@ -95,7 +92,7 @@ def parse_agent_card(
     raw_jwks = decoded.get("jwks")
     if jwks_uri is not None and raw_jwks is not None:
         raise AgentCardFormatError("agent card must not contain both jwks_uri and jwks")
-    inline = parse_key_directory(raw_jwks) if raw_jwks is not None else None
+    inline = parse_jwk_set(raw_jwks) if raw_jwks is not None else None
 
     extension = decoded.get("web_bot_auth", {})
     if extension is None:
