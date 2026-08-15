@@ -30,6 +30,65 @@ def _aware(value: datetime | None, name: str) -> None:
         raise ValueError(f"{name} must be timezone-aware")
 
 
+def _sha256(value: str, name: str) -> str:
+    digest = value.casefold()
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise ValueError(f"{name} must be a 64-character hexadecimal SHA-256")
+    return digest
+
+
+@dataclass(frozen=True, slots=True)
+class KeyAuthorityBinding:
+    """Derived proof that one public key was bound to a source authority/body."""
+
+    key_thumbprint: str
+    authority: str
+    body_sha256: str
+    verified_at: datetime
+    expires_at: datetime | None
+    profile: str
+
+    def __post_init__(self) -> None:
+        _aware(self.verified_at, "verified_at")
+        _aware(self.expires_at, "expires_at")
+        object.__setattr__(self, "body_sha256", _sha256(self.body_sha256, "body_sha256"))
+        if not self.key_thumbprint:
+            raise ValueError("key_thumbprint must not be empty")
+        if not self.authority:
+            raise ValueError("authority must not be empty")
+        if not self.profile:
+            raise ValueError("profile must not be empty")
+        if self.expires_at is not None and self.expires_at <= self.verified_at:
+            raise ValueError("expires_at must be later than verified_at")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "key_thumbprint": self.key_thumbprint,
+            "authority": self.authority,
+            "body_sha256": self.body_sha256,
+            "verified_at": self.verified_at.isoformat(),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "profile": self.profile,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> KeyAuthorityBinding:
+        verified_raw = payload.get("verified_at")
+        if not isinstance(verified_raw, str):
+            raise ValueError("verified_at must be an ISO-8601 string")
+        expires_raw = payload.get("expires_at")
+        if expires_raw is not None and not isinstance(expires_raw, str):
+            raise ValueError("expires_at must be an ISO-8601 string or null")
+        return cls(
+            key_thumbprint=str(payload["key_thumbprint"]),
+            authority=str(payload["authority"]),
+            body_sha256=str(payload["body_sha256"]),
+            verified_at=datetime.fromisoformat(verified_raw),
+            expires_at=datetime.fromisoformat(expires_raw) if expires_raw else None,
+            profile=str(payload["profile"]),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SourceMetadata:
     uri: str
@@ -45,14 +104,14 @@ class SourceMetadata:
     etag: str | None = None
     last_modified: str | None = None
     validation_status: ValidationStatus = ValidationStatus.UNVALIDATED
+    key_authority_bindings: tuple[KeyAuthorityBinding, ...] = ()
 
     def __post_init__(self) -> None:
         _aware(self.retrieved_at, "retrieved_at")
         _aware(self.source_created_at, "source_created_at")
         _aware(self.expires_at, "expires_at")
-        digest = self.sha256.casefold()
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
-            raise ValueError("sha256 must be a 64-character hexadecimal SHA-256")
+        object.__setattr__(self, "sha256", _sha256(self.sha256, "sha256"))
+        object.__setattr__(self, "key_authority_bindings", tuple(self.key_authority_bindings))
         if not self.uri:
             raise ValueError("uri must not be empty")
         if not self.parser_profile:
@@ -75,6 +134,9 @@ class SourceMetadata:
             "etag": self.etag,
             "last_modified": self.last_modified,
             "validation_status": self.validation_status.value,
+            "key_authority_bindings": [
+                binding.to_dict() for binding in self.key_authority_bindings
+            ],
         }
 
     @classmethod
@@ -90,6 +152,16 @@ class SourceMetadata:
         retrieved = parse_dt("retrieved_at")
         if retrieved is None:
             raise ValueError("retrieved_at is required")
+        bindings_raw = payload.get("key_authority_bindings", [])
+        if not isinstance(bindings_raw, list):
+            raise ValueError("key_authority_bindings must be a list")
+        bindings = tuple(
+            KeyAuthorityBinding.from_dict(item)
+            for item in bindings_raw
+            if isinstance(item, dict)
+        )
+        if len(bindings) != len(bindings_raw):
+            raise ValueError("each key_authority_binding must be an object")
         return cls(
             uri=str(payload["uri"]),
             source_type=SourceType(str(payload["source_type"])),
@@ -114,6 +186,7 @@ class SourceMetadata:
             validation_status=ValidationStatus(
                 str(payload.get("validation_status", "unvalidated"))
             ),
+            key_authority_bindings=bindings,
         )
 
 
@@ -126,6 +199,11 @@ class SourceDocument:
         digest = hashlib.sha256(self.content).hexdigest()
         if digest != self.metadata.sha256:
             raise ValueError("source content does not match metadata SHA-256")
+        if any(
+            binding.body_sha256 != digest
+            for binding in self.metadata.key_authority_bindings
+        ):
+            raise ValueError("key authority binding does not match source content SHA-256")
 
     @classmethod
     def from_bytes(
@@ -144,6 +222,7 @@ class SourceDocument:
         etag: str | None = None,
         last_modified: str | None = None,
         validation_status: ValidationStatus = ValidationStatus.UNVALIDATED,
+        key_authority_bindings: tuple[KeyAuthorityBinding, ...] = (),
     ) -> SourceDocument:
         digest = hashlib.sha256(content).hexdigest()
         metadata = SourceMetadata(
@@ -160,5 +239,6 @@ class SourceDocument:
             etag=etag,
             last_modified=last_modified,
             validation_status=validation_status,
+            key_authority_bindings=key_authority_bindings,
         )
         return cls(metadata=metadata, content=bytes(content))
