@@ -1,4 +1,4 @@
-"""Signature Agent Card parser for draft-meunier-webbotauth-registry-02."""
+"""Signature Agent Card parser for draft-meunier-webbotauth-registry-03."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ class AgentCard:
     rate_expectation: str | None
     known_urls: tuple[str, ...]
     ips_uri: str | None
-    profile: str = "draft-meunier-webbotauth-registry-02"
+    profile: str = "draft-meunier-webbotauth-registry-03"
 
 
 def parse_agent_card(
@@ -84,10 +84,12 @@ def parse_agent_card(
     if not isinstance(decoded, Mapping) or not decoded:
         raise AgentCardFormatError("agent card must be a non-empty JSON object")
 
-    # `client_id` is not a registry-02 parameter. Preserve it only as tolerated
-    # legacy metadata and never use it as an authority-binding requirement.
     client_id = _https_uri(decoded.get("client_id"), "client_id")
-    _ = retrieved_from
+    if retrieved_from is not None:
+        if client_id is None:
+            raise AgentCardFormatError("a card retrieved through client_id must include client_id")
+        if client_id != retrieved_from:
+            raise AgentCardFormatError("returned client_id must exactly match the retrieval URL")
 
     jwks_uri = _https_uri(decoded.get("jwks_uri"), "jwks_uri")
     raw_jwks = decoded.get("jwks")
@@ -95,17 +97,14 @@ def parse_agent_card(
         raise AgentCardFormatError("agent card must not contain both jwks_uri and jwks")
     inline = parse_key_directory(raw_jwks) if raw_jwks is not None else None
 
-    raw_extension = decoded.get("web_bot_auth")
-    if raw_extension is None:
-        extension: Mapping[str, Any] = decoded
-    elif isinstance(raw_extension, Mapping):
-        extension = raw_extension
-    else:
+    extension = decoded.get("web_bot_auth", {})
+    if extension is None:
+        extension = {}
+    if not isinstance(extension, Mapping):
         raise AgentCardFormatError("web_bot_auth must be a JSON object")
-
     trigger = _string(extension.get("trigger"))
     if trigger not in (None, "fetcher", "crawler"):
-        raise AgentCardFormatError("trigger must be fetcher or crawler")
+        raise AgentCardFormatError("web_bot_auth.trigger must be fetcher or crawler")
 
     recognized_top_level = {
         "client_id",
@@ -146,13 +145,16 @@ def parse_agent_card(
         robots_product_token=_string(extension.get("rfc9309-product-token")),
         robots_compliance=_string_tuple(
             extension.get("rfc9309-compliance"),
-            "rfc9309-compliance",
+            "web_bot_auth.rfc9309-compliance",
         ),
         trigger=trigger,
         purpose=_string(extension.get("purpose")),
         targeted_content=_string(extension.get("targeted-content")),
         rate_control=_string(extension.get("rate-control")),
         rate_expectation=_string(extension.get("rate-expectation")),
-        known_urls=_string_tuple(extension.get("known-urls"), "known-urls"),
-        ips_uri=_https_uri(extension.get("ips_uri"), "ips_uri"),
+        known_urls=_string_tuple(
+            extension.get("known-urls"),
+            "web_bot_auth.known-urls",
+        ),
+        ips_uri=_https_uri(extension.get("ips_uri"), "web_bot_auth.ips_uri"),
     )
