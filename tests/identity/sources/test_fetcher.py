@@ -176,3 +176,31 @@ def test_success_passes_only_validated_addresses_to_transport() -> None:
     )
     assert transport.calls[0].allowed_addresses == ("8.8.8.8", "93.184.216.34")
     assert result.body == b"{}"
+
+
+def test_signature_fields_are_exposed_only_on_transient_fetch_result() -> None:
+    resolver = FakeResolver({"agent.example": ("93.184.216.34",)})
+    transport = FakeTransport(
+        [
+            response(
+                body=b'{"keys":[]}',
+                Signature="sig1=:c2lnbmF0dXJl:",
+                **{
+                    "Signature-Input": (
+                        'sig1=("@authority";req "content-digest");'
+                        'keyid="thumbprint";tag="http-message-signatures-directory"'
+                    ),
+                    "Content-Digest": "sha-256=:ZGlnZXN0:",
+                },
+            )
+        ]
+    )
+
+    result = SafeFetcher(resolver=resolver, transport=transport).fetch(
+        "https://agent.example/.well-known/http-message-signatures-directory"
+    )
+
+    assert result.signature == "sig1=:c2lnbmF0dXJl:"
+    assert result.signature_input is not None
+    assert '"@authority";req' in result.signature_input
+    assert result.content_digest == "sha-256=:ZGlnZXN0:"
