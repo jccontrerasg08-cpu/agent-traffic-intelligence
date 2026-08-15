@@ -10,9 +10,12 @@ from agent_traffic_intelligence.identity.crypto.agent_card import (
 )
 
 
-def inline_jwks() -> dict[str, object]:
+def inline_jwks(*, kid: str | None = None) -> dict[str, object]:
     x = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=").decode("ascii")
-    return {"keys": [{"kty": "OKP", "crv": "Ed25519", "x": x}]}
+    key: dict[str, object] = {"kty": "OKP", "crv": "Ed25519", "x": x}
+    if kid is not None:
+        key["kid"] = kid
+    return {"keys": [key]}
 
 
 def test_registry_03_parses_cimd_and_web_bot_auth_extension() -> None:
@@ -55,3 +58,13 @@ def test_card_rejects_non_https_key_and_ip_sources() -> None:
         parse_agent_card({"jwks_uri": "http://example.com/keys"})
     with pytest.raises(AgentCardFormatError, match="HTTPS"):
         parse_agent_card({"web_bot_auth": {"ips_uri": "http://example.com/ips"}})
+
+
+def test_cimd_inline_jwks_keeps_operator_kid_separate_from_thumbprint() -> None:
+    card = parse_agent_card({"jwks": inline_jwks(kid="operator-key-1")})
+
+    assert card.inline_jwks is not None
+    key = card.inline_jwks.keys[0]
+    assert key.kid == "operator-key-1"
+    assert key.thumbprint
+    assert key.thumbprint != key.kid
