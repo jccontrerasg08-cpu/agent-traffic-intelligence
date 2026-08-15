@@ -42,7 +42,7 @@ def test_rejects_digest_that_does_not_match_body() -> None:
 
 def test_rejects_malformed_or_unsupported_digest_dictionary() -> None:
     with pytest.raises(ContentDigestError, match="valid RFC 9530"):
-        validate_content_digest("not-a-dictionary", b"body")
+        validate_content_digest("sha-256=:", b"body")
 
     sf = structured_fields_module()
     unsupported = str(sf.Dictionary({"md5": hashlib.md5(b"body").digest()}))
