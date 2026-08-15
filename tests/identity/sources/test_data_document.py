@@ -91,7 +91,7 @@ def test_wrong_media_type_or_invalid_bare_parameter_is_rejected(
     module = _module()
     parser = getattr(module, parser_name)
 
-    with pytest.raises(module.DataDocumentError, match="media type|parameter"):
+    with pytest.raises(module.DataDocumentError, match=r"media type|parameter"):
         parser(uri)
 
 
