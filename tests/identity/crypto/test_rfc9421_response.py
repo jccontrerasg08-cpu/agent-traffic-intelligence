@@ -6,13 +6,12 @@ import pytest
 
 pytest.importorskip("http_message_signatures")
 
-from http_sf.compat import Item
-
 from agent_traffic_intelligence.identity.crypto.rfc9421_response import (
     ResponseMessage,
     ResponseRequest,
     response_component_resolver_class,
 )
+from http_sf.compat import Item
 
 
 @dataclass
