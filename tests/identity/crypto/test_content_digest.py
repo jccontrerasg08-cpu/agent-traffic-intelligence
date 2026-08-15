@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 
 import pytest
-
 from agent_traffic_intelligence.identity.crypto.content_digest import (
     ContentDigestError,
     validate_content_digest,
