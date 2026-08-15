@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
+from agent_traffic_intelligence.identity.crypto.directory_response import (
+    DirectoryResponseVerifier,
+)
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
 from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
@@ -15,6 +18,7 @@ from agent_traffic_intelligence.identity.profiles import load_provider_profiles
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult, SafeFetcher
 from agent_traffic_intelligence.identity.sources.models import (
+    KeyAuthorityBinding,
     SourceDocument,
     SourceType,
     ValidationStatus,
@@ -166,11 +170,40 @@ def _expires_at(retrieved_at: datetime, cache_control: str | None) -> datetime |
     return retrieved_at + timedelta(seconds=max_age)
 
 
+def _key_authority_bindings(
+    spec: SourceSpec,
+    result: FetchResult,
+    *,
+    body: bytes,
+    retrieved_at: datetime,
+) -> tuple[KeyAuthorityBinding, ...]:
+    if spec.source_type is not SourceType.KEY_DIRECTORY:
+        return ()
+    directory = parse_key_directory(body)
+    return DirectoryResponseVerifier().verify(
+        directory=directory,
+        body=body,
+        request_uri=spec.uri,
+        response_uri=result.uri,
+        status_code=result.status,
+        signature=result.signature,
+        signature_input=result.signature_input,
+        content_digest=result.content_digest,
+        now=retrieved_at,
+    ).bindings
+
+
 def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocument:
     if result.body is None:
         raise ValueError("fresh identity source response must contain a body")
     retrieved_at = datetime.now(UTC)
     source_created_at = _source_created_at(spec, result.body)
+    key_authority_bindings = _key_authority_bindings(
+        spec,
+        result,
+        body=result.body,
+        retrieved_at=retrieved_at,
+    )
     return SourceDocument.from_bytes(
         uri=spec.uri,
         source_type=spec.source_type,
@@ -185,6 +218,7 @@ def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocume
         etag=result.etag,
         last_modified=result.last_modified,
         validation_status=ValidationStatus.VALID,
+        key_authority_bindings=key_authority_bindings,
     )
 
 
