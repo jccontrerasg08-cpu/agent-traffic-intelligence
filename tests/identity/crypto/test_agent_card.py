@@ -55,3 +55,22 @@ def test_card_rejects_non_https_key_and_ip_sources() -> None:
         parse_agent_card({"jwks_uri": "http://example.com/keys"})
     with pytest.raises(AgentCardFormatError, match="HTTPS"):
         parse_agent_card({"web_bot_auth": {"ips_uri": "http://example.com/ips"}})
+
+
+def test_registry_02_reads_flat_web_bot_auth_parameters() -> None:
+    card = parse_agent_card(
+        {
+            "client_name": "Example Bot",
+            "expected-user-agent": "ExampleBot/2.0",
+            "trigger": "fetcher",
+            "purpose": "training",
+            "known-urls": ["https://example.com/about"],
+            "ips_uri": "https://example.com/ips.json",
+        }
+    )
+
+    assert card.expected_user_agent == "ExampleBot/2.0"
+    assert card.trigger == "fetcher"
+    assert card.purpose == "training"
+    assert card.known_urls == ("https://example.com/about",)
+    assert card.ips_uri == "https://example.com/ips.json"
