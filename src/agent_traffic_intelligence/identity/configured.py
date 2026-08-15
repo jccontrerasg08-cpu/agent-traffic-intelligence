@@ -9,6 +9,10 @@ from agent_traffic_intelligence.identity.crypto.directory import (
     DirectoryFormatError,
     parse_key_directory,
 )
+from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    SignatureAgentProfile,
+    StructuredFieldSignatureAgentParser,
+)
 from agent_traffic_intelligence.identity.crypto.web_bot_auth import WebBotAuthVerifier
 from agent_traffic_intelligence.identity.manager import IdentityVerifier, VerificationManager
 from agent_traffic_intelligence.identity.models import (
@@ -31,6 +35,12 @@ from agent_traffic_intelligence.identity.profiles import (
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
+
+
+def signature_agent_profile_for(profile: CryptoSourceProfile) -> SignatureAgentProfile:
+    """Map a validated declarative crypto source to its parser profile."""
+
+    return SignatureAgentProfile(profile.interoperability_profile.value)
 
 
 @dataclass(slots=True)
@@ -161,6 +171,9 @@ class _CryptoAdapter:
             binding_scope=self.profile.binding_scope,
             subject=self.profile.subject,
             trust_policy=self.trust,
+            signature_agent_parser=StructuredFieldSignatureAgentParser(
+                profile=signature_agent_profile_for(self.profile)
+            ),
         ).verify(context=context, claim=claim, now=event.timestamp)
         return replace(raw, authority=self.provider)
 
