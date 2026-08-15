@@ -1,35 +1,62 @@
 # Threat Model
 
-## Protected asset
+## Protected assets
 
-Reliable classification and observability of traffic reaching a web property or API without exposing sensitive request data.
+- reliable, explainable traffic classification;
+- privacy of request/network data;
+- integrity of identity source/provenance material;
+- integrity of repository automation and releases.
 
-## Adversaries and difficult cases
+## Trust categories
 
-### Spoofed known User-Agent
+**Trusted:** reviewed repository code, pinned workflow dependencies, validated internal schemas, curated provider profiles and verified immutable release artifacts.
 
-An attacker can send `GPTBot`, `ClaudeBot`, `Googlebot`, or any other token. V0 therefore records a claim but keeps identity confidence low. Future verifier adapters combine official network material, forward-confirmed reverse DNS where appropriate, or cryptographic signatures.
+**Semi-trusted:** provider-owned JSON/JWKS/Agent Cards, DNS responses, cached external source documents and standards drafts. These must still be validated, scoped and freshness-checked.
 
-### Residential and rotating proxies
+**Untrusted:** arbitrary requests, User-Agent strings, forwarded headers, unknown Signature-Agent URLs, public web content, issue/PR input and third-party artifacts not explicitly reviewed.
 
-IP reputation and ASN are supporting evidence only. Shared/NAT/residential IPs must not be treated as identity.
+## Adversaries and failure modes
 
-### TLS impersonation
+### Spoofed User-Agent
 
-Advanced clients can reproduce common TLS fingerprints. JA4-like fingerprints are evidence, not proof, and must be combined with request/session behavior.
+A request can claim any bot token. UA remains a claim; V1 requires scoped network or cryptographic evidence for stronger identity.
 
-### Real-browser automation
+### Proxy-header spoofing
 
-Playwright, Selenium, Puppeteer, browser extensions, and agentic browsers can load normal assets and execute JavaScript. Server-side single-request classification can be fundamentally ambiguous. Session and cross-context features are required, with optional browser telemetry later.
+`X-Forwarded-For` and equivalents are attacker-controlled unless the directly connected peer is explicitly trusted. Default V1 never promotes them into positive source-address evidence.
 
-### Distributed low-and-slow scraping
+### PTR/DNS spoofing and rebinding
 
-Per-client rate rules can fail when traffic is spread across many clients. Future correlation needs route-level aggregates, fingerprint clusters, and change detection without assuming a shared IP means a shared actor.
+PTR alone is insufficient. FCrDNS requires provider-documented suffix plus forward confirmation. Remote-source fetches validate public DNS destinations and pin the connection to already validated addresses while keeping TLS hostname validation.
+
+### SSRF through Signature-Agent
+
+Unknown request-provided discovery URIs are parsed but not automatically fetched. Default `registry_only` policy is intentionally restrictive.
+
+### Signature confusion and unsigned context
+
+A valid signature is accepted only for the expected application tag and ATI trusts only components actually returned as covered by RFC 9421 verification. Signed-agent binding must itself be covered.
+
+### Replay
+
+Created/expires windows are checked independently of cryptographic validity. A bounded process-local nonce cache can detect repeat nonces during a validity window; distributed persistent replay state is outside V1 offline scope.
+
+### Stale/compromised source material
+
+Sources are content-addressed and carry freshness/provenance. Stale/error/unavailable sources cannot become categorical failures. Source-health automation must not silently rewrite trust policy.
+
+### Supply-chain workflow compromise
+
+Third-party Actions execute privileged automation. ATI pins Actions to full commit SHAs, keeps permissions least privilege and avoids unnecessary Actions. Metadata workflows never execute untrusted PR code under `pull_request_target`.
+
+### Residential proxies, TLS mimicry and real-browser automation
+
+IP/ASN/TLS fingerprints remain supporting behavioral evidence only. They are not identity proof and advanced browser automation can be fundamentally ambiguous server-side.
 
 ### Poisoning and concept drift
 
-Online learning can be manipulated if weak labels are accepted automatically. V0 has no online training. Future learning pipelines must separate trusted labels, delayed evaluation, model registry/reproducibility, and rollback.
+V1 has no online training. Future ML pipelines must separate trusted labels, time-based evaluation, model provenance, rollback and drift monitoring.
 
 ## Failure policy
 
-V0 never enforces. Future real-time sensors should default to observe/allow on detector failure unless an operator deliberately configures a separate fail-closed security policy for a known threat model.
+V1 remains observe-only. Operational verifier failures preserve evidence and default to neutral identity outcomes rather than enforcement. Any future blocking/challenge/rate-limit layer must remain separate and undergo its own threat review.

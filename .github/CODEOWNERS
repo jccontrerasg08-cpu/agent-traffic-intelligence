@@ -1,1 +1,10 @@
 * @jccontrerasg08-cpu
+
+/src/agent_traffic_intelligence/identity/ @jccontrerasg08-cpu
+/src/agent_traffic_intelligence/identity/network/ @jccontrerasg08-cpu
+/src/agent_traffic_intelligence/identity/crypto/ @jccontrerasg08-cpu
+/src/agent_traffic_intelligence/identity/sources/ @jccontrerasg08-cpu
+/src/agent_traffic_intelligence/parsers/ @jccontrerasg08-cpu
+/tests/identity/ @jccontrerasg08-cpu
+/.github/ @jccontrerasg08-cpu
+/docs/adr/ @jccontrerasg08-cpu

@@ -2,7 +2,7 @@
 
 Self-hosted, explainable intelligence for automated and AI-originated web traffic.
 
-> **Status: pre-alpha / observe-only.** V0 analyzes access logs. It does not block, challenge, throttle, or mutate production traffic.
+> **Status: pre-alpha / observe-only.** V1 can verify selected machine identities, but ATI still does not block, challenge, throttle, or mutate production traffic.
 
 ## Why this exists
 
@@ -15,24 +15,32 @@ Agent Traffic Intelligence keeps those dimensions separate:
 - `identity_confidence`: evidence that a claimed actor identity is authentic.
 - `risk_score`: evidence that observed behavior is operationally risky or abusive.
 
-A User-Agent claim is **not** identity verification. V0 intentionally gives known User-Agent claims low `identity_confidence` until stronger verification adapters exist.
+A User-Agent claim is **not** identity verification. V1 can add independent network or cryptographic evidence without automatically changing automation, AI-relatedness, or risk.
 
-## V0 architecture
+## Architecture
 
 ```text
 JSONL access logs
       |
       v
 parser + privacy transform
-      |
+      |\
+      | +--> ephemeral VerificationContext
+      |        raw source address/signature material
+      |        never persisted in RequestEvent
       v
 normalized RequestEvent
       |\
-      | +--> curated agent registry
-      |          |
-      v          v
+      | +--> curated agent registry ----> claimed identity
+      |                                  |
+      |                                  +--> official ranges / FCrDNS
+      |                                  +--> RFC 9421 / Web Bot Auth
+      |                                           |
+      |                                           v
+      |                                  verification evidence
+      v
 request/session features
-      |          |
+      |
       +-----> evidence rules
                  |
                  v
@@ -42,7 +50,7 @@ request/session features
          detection JSONL
 ```
 
-The runtime has **zero third-party Python dependencies**. Development tooling is optional.
+The deterministic core has **zero third-party Python runtime dependencies**. Cryptographic verification is an optional extra.
 
 ## Quick start
 
@@ -73,9 +81,54 @@ $env:ATI_HASH_KEY = 'replace-with-a-long-random-secret'
 ati analyze examples/data/access.jsonl --source nginx --output detections.jsonl
 ```
 
+## V1 verified identity
+
+Install the optional cryptographic stack when RFC 9421 / Web Bot Auth verification is needed:
+
+```bash
+python -m pip install -e '.[verification]'
+```
+
+External identity sources are refreshed **explicitly**. `ati analyze` never downloads or silently refreshes provider material.
+
+```bash
+ati sources status
+ati sources refresh
+ati sources validate
+```
+
+By default the cache lives under `~/.cache/agent-traffic-intelligence/identity-sources`. Override it with `ATI_SOURCE_CACHE` when an operator needs an explicit location.
+
+Analyze with verification enabled:
+
+```bash
+ati analyze examples/data/access.jsonl \
+  --source nginx \
+  --verify-identity \
+  --verification-mode offline \
+  --output verified.jsonl
+```
+
+Verification modes:
+
+- `offline`: cached official ranges and cached cryptographic material only; no DNS verification.
+- `hybrid`: cached material plus provider-documented FCrDNS where configured.
+- `live`: currently has the same verifier availability as `hybrid`; source downloads remain an explicit `ati sources refresh` operation.
+
+Verification can resolve to `claimed`, `verified`, `failed`, or `conflicted`. Operational failures such as missing cache, DNS failure, stale source material, or an unavailable optional dependency do not become identity failures by themselves.
+
+Current provider verification policy is deliberately conservative:
+
+- OpenAI: agent-scoped official range publications where available.
+- Google: official crawler range publications, provider-documented FCrDNS, and `Google-Agent` Web Bot Auth material.
+- Perplexity: agent-scoped published IP ranges.
+- Anthropic: no IP-range verification is configured because Anthropic does not currently publish crawler IP ranges.
+
+See [`docs/identity-verification.md`](docs/identity-verification.md), [`docs/web-bot-auth.md`](docs/web-bot-auth.md), and [`docs/standards-status.md`](docs/standards-status.md).
+
 ## Input contract
 
-V0 accepts line-delimited JSON objects. Common Nginx-style keys are recognized:
+ATI accepts line-delimited JSON objects. Common Nginx-style keys are recognized:
 
 ```json
 {
@@ -90,40 +143,23 @@ V0 accepts line-delimited JSON objects. Common Nginx-style keys are recognized:
 }
 ```
 
-The normalizer strips query strings before generating a `RequestEvent`. Raw IPs are replaced by keyed BLAKE2b pseudonyms. Prefer a pre-pseudonymized `client_id` when your edge can provide one.
+The normalizer strips query strings before generating a `RequestEvent`. Raw IPs are replaced by keyed BLAKE2b pseudonyms. Prefer a pre-pseudonymized `client_id` when your edge can provide one. Generated request identifiers include the input line number, so they are unique within one analyzed JSONL stream even when two records otherwise match.
+
+`ati analyze` rejects lines longer than 1,000,000 characters by default; use `--max-line-characters` to set a stricter or larger operational limit. Session state is bounded by default to 10,000 active clients and 128 events per client. When the active-client limit is reached, ATI evicts the least-recently-used client history; tune `--max-clients`, `--max-events-per-client`, and `--session-window-seconds` for the memory envelope of the deployment. The completion summary reports processed events, active sessions, evictions, and the configured client limit.
+
+When `--output` is used, ATI writes to a sibling temporary file and replaces the destination only after successful processing. This preserves the prior output on errors and makes it safe to intentionally use the same input and output path.
 
 See [`docs/schemas.md`](docs/schemas.md) and [`examples/nginx/ati-json.conf`](examples/nginx/ati-json.conf).
 
-## Output example
+## Output
 
-```json
-{
-  "automation_score": 0.8581,
-  "ai_score": 0.8320,
-  "identity_confidence": 0.0630,
-  "risk_score": 0.0832,
-  "identity": {
-    "provider": "openai",
-    "agent": "GPTBot",
-    "actor_type": "ai_crawler",
-    "intent": "model-development",
-    "verification_state": "claimed"
-  },
-  "evidence": [
-    {
-      "code": "known-agent-ua-claim",
-      "source": "registry",
-      "description": "User-Agent claims a curated identity; User-Agent alone is spoofable and is not verification."
-    }
-  ]
-}
-```
+V0-compatible analysis omits the `verification` field entirely. With V1 verification enabled, a separate versioned verification payload records the resolved identity state and privacy-safe evidence. This preserves the original four score dimensions while making stronger identity evidence auditable.
 
-Scores are estimates from a conservative hand-authored V0 baseline, not calibrated probabilities yet. Learned calibration is a later milestone.
+Scores remain conservative hand-authored estimates, not calibrated probabilities. Learned calibration is a later milestone.
 
 ## Curated identity registry
 
-The packaged registry currently contains primary-source-backed identities from OpenAI, Anthropic, Perplexity, and Google. Every entry records its official source and `last_verified` date.
+The packaged registry contains primary-source-backed identities from OpenAI, Anthropic, Perplexity, and Google. Every entry records its official source and `last_verified` date.
 
 Important distinctions encoded in the registry include:
 
@@ -136,7 +172,7 @@ The registry intentionally does **not** treat `Google-Extended` as an HTTP User-
 
 ## Behavioral features
 
-V0 keeps feature engineering small and inspectable:
+ATI keeps feature engineering small and inspectable:
 
 - path depth and static-asset classification;
 - bounded per-client request count and duration;
@@ -158,13 +194,13 @@ ATI output does not contain:
 - Cookie or Authorization values;
 - request or response bodies.
 
-User-Agent strings remain in normalized events because they are a core identity signal. Operators should still treat them as potentially identifying metadata and apply appropriate retention controls.
+Raw source addresses and signature material required for V1 verification live only in an ephemeral `VerificationContext`; they are not copied into normalized events or detections. User-Agent strings remain because they are a core claim signal and should still receive appropriate retention controls.
 
-Read [`SECURITY.md`](SECURITY.md) and [`docs/threat-model.md`](docs/threat-model.md) before using real traffic.
+Read [`SECURITY.md`](SECURITY.md), [`docs/threat-model.md`](docs/threat-model.md), and [`docs/source-trust-policy.md`](docs/source-trust-policy.md) before using real traffic.
 
 ## Research positioning
 
-The project is informed by, but does not copy, open-source work including Anubis, CrowdSec, FingerprintJS BotD, FPScanner, AgentECHO, Logwick, River, JA4/JA4+, and crawler/adversarial tooling. See [`docs/research/open-source-landscape.md`](docs/research/open-source-landscape.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The project is informed by, but does not copy, work including Anubis, CrowdSec, FingerprintJS BotD, FPScanner, AgentECHO, Logwick, River, JA4/JA4+, crawler/adversarial tooling, and industry research on differentiating AI traffic types. See [`docs/research/open-source-landscape.md`](docs/research/open-source-landscape.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 Our intended differentiation is the combination of:
 
@@ -172,8 +208,8 @@ Our intended differentiation is the combination of:
 2. behavior and identity kept separate from risk;
 3. explainable evidence for every score change;
 4. privacy-minimized server-side operation;
-5. future unknown-agent discovery and drift-aware ML;
-6. vendor-neutral adapters from logs to reverse proxies, Zeek/Suricata, and edge providers.
+5. unknown-agent discovery and drift-aware ML as later research;
+6. vendor-neutral adapters from logs toward reverse proxies, Zeek/Suricata, and edge providers.
 
 ## Roadmap
 
@@ -187,12 +223,29 @@ Our intended differentiation is the combination of:
 - [ ] real-world shadow-mode benchmark dataset
 - [ ] probability calibration
 
+### Local evaluation
+
+Evaluate authorized labels against existing automation scores without uploading or retaining a corpus:
+
+```bash
+ati evaluate detections.jsonl --labels labels.jsonl --threshold 0.5
+```
+
+The evaluator reports coverage, confusion-matrix metrics, and Brier score. It does not train or calibrate a model. See [`docs/evaluation.md`](docs/evaluation.md) for the JSONL contract, label provenance requirements, and leakage-safe benchmark design.
+
 ### V1: verified identity
 
-- official IP/rDNS adapters where providers publish verifiable infrastructure;
-- Web Bot Auth / HTTP Message Signature verification;
-- cached identity material with provenance and freshness metadata;
-- adapters for Nginx, Envoy, HAProxy, Traefik, Cloudflare logs, Zeek, and Suricata.
+- [x] ephemeral verification context preserving V0 privacy/output behavior
+- [x] official IP-range verification with provenance/freshness
+- [x] provider-documented FCrDNS support
+- [x] RFC 9421 / Web Bot Auth optional verification stack
+- [x] deterministic resolver with explicit conflicts
+- [x] content-addressed source cache and hardened explicit refresh
+- [x] `ati sources status|refresh|validate`
+- [x] Python 3.11/3.12/3.13 core + verification CI
+- [x] wheel/sdist build and clean-install verification
+- [ ] additional log/edge adapters beyond the current JSONL/Nginx-oriented seam
+- [ ] real-world shadow-mode conformance corpus
 
 ### V2: learned detection
 
@@ -209,8 +262,8 @@ A Go or Rust sidecar/reverse proxy in observe-only mode first. Enforcement remai
 ## Development
 
 ```bash
-python -m pip install -e '.[dev]'
-pytest
+python -m pip install -e '.[dev,verification]'
+pytest --cov=agent_traffic_intelligence
 ruff check .
 mypy src
 ```

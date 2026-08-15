@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/agent-traffic-intelligence/verification.schema.json",
+  "title": "ATI Verification V1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "state",
+    "provider_verified",
+    "agent_verified",
+    "provider",
+    "agent",
+    "methods",
+    "conflicts"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "state": {"enum": ["none", "claimed", "verified", "failed", "conflicted"]},
+    "provider_verified": {"type": "boolean"},
+    "agent_verified": {"type": "boolean"},
+    "provider": {"type": ["string", "null"]},
+    "agent": {"type": ["string", "null"]},
+    "methods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "outcome", "binding_scope", "explanation", "details"],
+        "properties": {
+          "method": {"enum": ["official_range", "fcrdns", "rfc9421", "web_bot_auth"]},
+          "outcome": {"enum": ["pass", "mismatch", "unavailable", "indeterminate", "stale", "error"]},
+          "binding_scope": {"enum": ["key", "provider", "agent"]},
+          "authority": {"type": ["string", "null"]},
+          "subject": {"type": ["string", "null"]},
+          "explanation": {"type": "string"},
+          "source_uri": {"type": ["string", "null"]},
+          "source_profile": {"type": ["string", "null"]},
+          "retrieved_at": {"type": ["string", "null"]},
+          "expires_at": {"type": ["string", "null"]},
+          "source_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-fA-F]{64}$"},
+          "details": {"type": "object"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "conflicts": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

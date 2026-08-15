@@ -1,0 +1,29 @@
+name: Identity verification discrepancy
+description: Report a suspected incorrect CLAIMED, VERIFIED, FAILED, or CONFLICTED result.
+title: "identity: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ATI version / commit
+    validations:
+      required: true
+  - type: dropdown
+    id: state
+    attributes:
+      label: Observed state
+      options: [claimed, verified, failed, conflicted]
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Claimed provider / agent
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Include method/outcome/binding scope and source digest if available. Never paste raw IPs, signatures, cookies, Authorization, or bodies.
+    validations:
+      required: true

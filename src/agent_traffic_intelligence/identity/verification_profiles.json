@@ -1,0 +1,144 @@
+{
+  "providers": [
+    {
+      "crypto": null,
+      "fcrdns": null,
+      "provider": "openai",
+      "range_sources": [
+        {
+          "binding_scope": "agent",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "GPTBot",
+          "uri": "https://openai.com/gptbot.json"
+        },
+        {
+          "binding_scope": "agent",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "OAI-SearchBot",
+          "uri": "https://openai.com/searchbot.json"
+        },
+        {
+          "binding_scope": "agent",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "positive_only",
+          "reviewed_on": "2026-08-14",
+          "subject": "OAI-AdsBot",
+          "uri": "https://openai.com/adsbot.json"
+        }
+      ]
+    },
+    {
+      "crypto": {
+        "reviewed_on": "2026-08-14",
+        "signature_agents": [
+          {
+            "binding_scope": "agent",
+            "directory_uri": "https://agent.bot.goog/.well-known/http-message-signatures-directory",
+            "discovery_type": "directory",
+            "interoperability_profile": "ietf-httpsig-protocol-01",
+            "reviewed_on": "2026-08-14",
+            "signature_agent_uri": "https://agent.bot.goog",
+            "subject": "Google-Agent"
+          }
+        ]
+      },
+      "fcrdns": {
+        "allowed_suffixes": [
+          "googlebot.com",
+          "geo.googlebot.com",
+          "google.com",
+          "gae.googleusercontent.com"
+        ],
+        "binding_scope": "provider",
+        "reviewed_on": "2026-08-14"
+      },
+      "provider": "google",
+      "range_sources": [
+        {
+          "binding_scope": "provider",
+          "category": "common-crawlers",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "uri": "https://developers.google.com/crawling/ipranges/common-crawlers.json"
+        },
+        {
+          "binding_scope": "provider",
+          "category": "special-crawlers",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "uri": "https://developers.google.com/crawling/ipranges/special-crawlers.json"
+        },
+        {
+          "binding_scope": "provider",
+          "category": "user-triggered-fetchers",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-fetchers.json"
+        },
+        {
+          "binding_scope": "provider",
+          "category": "user-triggered-fetchers-google",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-fetchers-google.json"
+        },
+        {
+          "binding_scope": "provider",
+          "category": "user-triggered-agents",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "uri": "https://developers.google.com/crawling/ipranges/user-triggered-agents.json"
+        }
+      ]
+    },
+    {
+      "crypto": null,
+      "fcrdns": null,
+      "provider": "perplexity",
+      "range_sources": [
+        {
+          "binding_scope": "agent",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "subject": "PerplexityBot",
+          "uri": "https://www.perplexity.ai/perplexitybot.json"
+        },
+        {
+          "binding_scope": "agent",
+          "format_profile": "prefixes-v1",
+          "negative_semantics": "authoritative_negative",
+          "reviewed_on": "2026-08-14",
+          "subject": "Perplexity-User",
+          "uri": "https://www.perplexity.ai/perplexity-user.json"
+        }
+      ]
+    },
+    {
+      "crypto": null,
+      "fcrdns": null,
+      "provider": "anthropic",
+      "range_sources": []
+    },
+    {
+      "crypto": {
+        "reviewed_on": "2026-08-14",
+        "signature_agents": []
+      },
+      "fcrdns": null,
+      "provider": "cloudflare",
+      "range_sources": []
+    }
+  ],
+  "reviewed_on": "2026-08-14",
+  "schema_version": 1
+}

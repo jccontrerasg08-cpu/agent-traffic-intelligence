@@ -38,3 +38,28 @@ Primary metrics:
 - latency and memory at the chosen operating threshold.
 
 Accuracy alone is not a useful headline metric on imbalanced traffic.
+
+## Local evaluation harness
+
+ATI now provides a local, JSONL-based harness for evaluating existing `automation_score` output against an **authorized** label corpus. It performs only in-memory metric calculation over privacy-safe request identifiers. It does not train a model, retain traffic, upload data, or claim that heuristic scores are calibrated probabilities.
+
+The detection input must contain a non-empty `request_id` and numeric `automation_score` in `[0, 1]`. The label input is JSONL with a privacy-safe `request_id` and a boolean `automated` field on each line.
+
+```json
+{"request_id":"request-001","automated":true}
+{"request_id":"request-002","automated":false}
+```
+
+Run the evaluator with:
+
+```bash
+ati evaluate detections.jsonl --labels labels.jsonl --threshold 0.5
+```
+
+The output contains the confusion matrix, precision, recall, F1, accuracy, Brier score, selected threshold, and two coverage indicators. `unlabeled_request_count` and `unmatched_label_count` must be investigated rather than silently classified as negative traffic. Duplicate label IDs, malformed JSONL, invalid booleans, duplicate detections, and scores outside `[0, 1]` are rejected.
+
+> The Brier score is a score-quality diagnostic, not proof of calibration. Probability calibration and learned detection still require a time-aware, authorized corpus using the leakage controls above.
+
+## Corpus handling
+
+Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
