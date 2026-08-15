@@ -20,6 +20,7 @@ from agent_traffic_intelligence.identity.profiles import (
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import (
     ActorType,
     IdentityClaim,
@@ -159,3 +160,44 @@ def test_runtime_maps_declarative_signature_agent_profile() -> None:
         interoperability_profile=CryptoInteroperabilityProfile.CLOUDFLARE_LEGACY,
     )
     assert signature_agent_profile_for(legacy) is SignatureAgentProfile.CLOUDFLARE_LEGACY
+
+
+def test_malformed_cached_directory_error_reports_current_profile(tmp_path) -> None:
+    google = provider_profile("google")
+    assert google.crypto is not None
+    source = google.crypto.signature_agents[0]
+    cache = SourceCache(tmp_path)
+    cache.put(
+        SourceDocument.from_bytes(
+            uri=source.directory_uri,
+            source_type=SourceType.KEY_DIRECTORY,
+            provider="google",
+            binding_scope=source.binding_scope,
+            retrieved_at=NOW,
+            content=b"{}",
+            content_type="application/http-message-signatures-directory+json",
+            parser_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
+        )
+    )
+    signed_context = replace(
+        context(),
+        signature="sig1=:placeholder:",
+        signature_input='sig1=("@authority");created=1',
+    )
+    google_claim = IdentityClaim(
+        provider="google",
+        agent="Google-Agent",
+        actor_type=ActorType.AI_CRAWLER,
+        intent="user-triggered",
+    )
+
+    resolution = ProviderAwareVerificationManager(cache).verify(
+        event=event(),
+        context=signed_context,
+        claim=google_claim,
+    )
+    evidence = next(
+        item for item in resolution.methods if item.outcome is VerificationOutcome.ERROR
+    )
+
+    assert evidence.source_profile == DEFAULT_STANDARDS_PROFILE.message_signatures_directory
