@@ -50,3 +50,5 @@ def test_google_crypto_profile_separates_identity_and_directory_uri() -> None:
     )
     assert source.binding_scope is BindingScope.AGENT
     assert source.subject == "Google-Agent"
+    assert source.interoperability_profile == "ietf-httpsig-protocol-01"
+    assert source.discovery_type == "directory"
