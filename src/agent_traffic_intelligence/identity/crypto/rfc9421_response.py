@@ -6,7 +6,7 @@ import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 
@@ -46,7 +46,7 @@ def _upstream_component_resolver() -> type[Any]:
         raise Rfc9421ResponseUnavailable(
             "optional HTTP Message Signatures support is not installed"
         ) from exc
-    return module.HTTPSignatureComponentResolver
+    return cast(type[Any], module.HTTPSignatureComponentResolver)
 
 
 def response_component_resolver_class() -> type[Any]:
