@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 pytest.importorskip("http_message_signatures")
@@ -11,16 +9,13 @@ from agent_traffic_intelligence.identity.crypto.rfc9421_response import (
     ResponseRequest,
     response_component_resolver_class,
 )
-from http_sf.compat import Item
+from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    structured_fields_module,
+)
 
 
-@dataclass
-class Headers:
-    values: dict[str, str]
-
-
-def item(raw: str) -> Item:
-    node = Item()
+def item(raw: str):
+    node = structured_fields_module().Item()
     node.parse(raw.encode("utf-8"))
     return node
 
