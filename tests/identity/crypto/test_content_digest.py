@@ -8,6 +8,7 @@ from agent_traffic_intelligence.identity.crypto.content_digest import (
     ContentDigestError,
     validate_content_digest,
 )
+
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
     structured_fields_module,
 )
