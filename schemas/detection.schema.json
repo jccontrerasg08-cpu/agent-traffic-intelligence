@@ -1,19 +1,90 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/agent-traffic-intelligence/detection.schema.json",
-  "title": "ATI Detection",
+  "title": "ATI Detection V1",
   "type": "object",
-  "required": ["request_id", "automation_score", "ai_score", "identity_confidence", "risk_score", "identity", "evidence", "features", "ruleset_version"],
+  "required": [
+    "schema_version",
+    "request_id",
+    "automation_score",
+    "ai_score",
+    "identity_confidence",
+    "risk_score",
+    "identity",
+    "evidence",
+    "features",
+    "ruleset_version"
+  ],
   "properties": {
-    "request_id": {"type": "string"},
+    "schema_version": {"const": 1},
+    "request_id": {"type": "string", "minLength": 1},
     "automation_score": {"type": "number", "minimum": 0, "maximum": 1},
     "ai_score": {"type": "number", "minimum": 0, "maximum": 1},
     "identity_confidence": {"type": "number", "minimum": 0, "maximum": 1},
     "risk_score": {"type": "number", "minimum": 0, "maximum": 1},
-    "identity": {"type": ["object", "null"]},
-    "evidence": {"type": "array", "items": {"type": "object"}},
-    "features": {"type": "object"},
-    "ruleset_version": {"type": "string"},
+    "identity": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/identity_claim"}
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["number", "boolean", "string", "null"]
+      }
+    },
+    "ruleset_version": {"type": "string", "minLength": 1},
     "verification": {"$ref": "verification.schema.json"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identity_claim": {
+      "type": "object",
+      "required": ["provider", "agent", "actor_type", "intent", "verification_state"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "agent": {"type": "string", "minLength": 1},
+        "actor_type": {
+          "enum": [
+            "human",
+            "search_crawler",
+            "service_crawler",
+            "ai_crawler",
+            "ai_user_agent",
+            "browser_automation",
+            "scraper",
+            "scanner",
+            "unknown_automation",
+            "unknown"
+          ]
+        },
+        "intent": {"type": "string"},
+        "verification_state": {
+          "enum": ["none", "claimed", "verified", "failed", "conflicted"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["code", "source", "description", "strength", "score_deltas"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "source": {"type": "string"},
+        "description": {"type": "string"},
+        "strength": {"type": "number", "minimum": -1, "maximum": 1},
+        "score_deltas": {
+          "type": "object",
+          "propertyNames": {"enum": ["automation", "ai", "identity", "risk"]},
+          "additionalProperties": {"type": "number"}
+        }
+      },
+      "additionalProperties": false
+    }
   }
 }

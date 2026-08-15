@@ -168,6 +168,24 @@ def test_conditional_headers_and_304_are_preserved() -> None:
     assert result.etag == '"v2"'
 
 
+def test_accepts_web_bot_auth_directory_media_type() -> None:
+    resolver = FakeResolver({"agent.example": ("93.184.216.34",)})
+    transport = FakeTransport(
+        [
+            response(
+                body=b'{"keys":[]}',
+                content_type="application/http-message-signatures-directory+json",
+            )
+        ]
+    )
+
+    result = SafeFetcher(resolver=resolver, transport=transport).fetch(
+        "https://agent.example/.well-known/http-message-signatures-directory"
+    )
+
+    assert result.content_type == "application/http-message-signatures-directory+json"
+
+
 def test_success_passes_only_validated_addresses_to_transport() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34", "8.8.8.8")})
     transport = FakeTransport([response(ETag='"v1"')])

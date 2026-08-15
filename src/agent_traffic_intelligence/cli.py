@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TextIO
 
 from agent_traffic_intelligence.engine import Detector
+from agent_traffic_intelligence.evaluation import EvaluationError, evaluate_automation_scores
+from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
 from agent_traffic_intelligence.identity.policy import VerificationMode
 from agent_traffic_intelligence.identity.source_service import (
@@ -51,6 +53,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Reject JSONL records longer than this many characters (default: 1000000).",
     )
     analyze.add_argument(
+        "--max-clients",
+        type=_positive_integer,
+        default=10_000,
+        help="Retain at most this many active client sessions with LRU eviction (default: 10000).",
+    )
+    analyze.add_argument(
+        "--max-events-per-client",
+        type=_positive_integer,
+        default=128,
+        help="Retain at most this many events per active client session (default: 128).",
+    )
+    analyze.add_argument(
+        "--session-window-seconds",
+        type=_positive_integer,
+        default=300,
+        help="Discard session events older than this window in seconds (default: 300).",
+    )
+    analyze.add_argument(
         "--hash-key-env",
         default="ATI_HASH_KEY",
         help="Environment variable containing the client pseudonymization key.",
@@ -71,6 +91,23 @@ def _parser() -> argparse.ArgumentParser:
     explain.add_argument("input", help="Detection JSONL file.")
     explain.add_argument("--request-id", required=True, help="Request identifier to explain.")
 
+    evaluate = subparsers.add_parser(
+        "evaluate",
+        help="Evaluate automation scores against an authorized local label corpus.",
+    )
+    evaluate.add_argument("input", help="Detection JSONL file.")
+    evaluate.add_argument(
+        "--labels",
+        required=True,
+        help="JSONL labels with request_id and automated.",
+    )
+    evaluate.add_argument(
+        "--threshold",
+        type=_unit_interval,
+        default=0.5,
+        help="Automation decision threshold from 0 to 1 (default: 0.5).",
+    )
+
     registry = subparsers.add_parser("registry", help="Inspect the curated agent registry.")
     registry_sub = registry.add_subparsers(dest="registry_command", required=True)
     registry_sub.add_parser("validate", help="Validate the packaged registry.")
@@ -86,6 +123,16 @@ def _parser() -> argparse.ArgumentParser:
     sources_sub.add_parser("validate", help="Validate all cached source documents offline.")
 
     return parser
+
+
+def _unit_interval(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError("must be between 0 and 1")
+    return parsed
 
 
 def _positive_integer(value: str) -> int:
@@ -144,15 +191,19 @@ def _analyze(args: argparse.Namespace) -> int:
         )
         return 2
     mode = VerificationMode(args.verification_mode)
-    detector = (
-        Detector(
-            verification_manager=ProviderAwareVerificationManager(
-                _source_cache(),
-                mode=mode,
-            )
-        )
+    session_state = SessionFeatureState(
+        max_clients=args.max_clients,
+        max_events_per_client=args.max_events_per_client,
+        window_seconds=args.session_window_seconds,
+    )
+    verification_manager = (
+        ProviderAwareVerificationManager(_source_cache(), mode=mode)
         if args.verify_identity
-        else Detector()
+        else None
+    )
+    detector = Detector(
+        session_state=session_state,
+        verification_manager=verification_manager,
     )
     processed = 0
 
@@ -198,12 +249,71 @@ def _analyze(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    print(f"processed={processed}", file=sys.stderr)
+    metrics = detector.session_resource_metrics()
+    print(
+        "processed={processed} active_clients={active_client_count} "
+        "evicted_clients={evicted_client_count} max_clients={max_client_count}".format(
+            processed=processed,
+            **metrics,
+        ),
+        file=sys.stderr,
+    )
     return 0
 
 
 def _json_line(payload: dict[str, object]) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
+
+
+def _iter_json_objects(path: Path, *, kind: str) -> Iterator[dict[str, object]]:
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise EvaluationError(
+                        f"{kind} JSONL has invalid JSON on line {line_number}"
+                    ) from exc
+                if not isinstance(payload, dict):
+                    raise EvaluationError(
+                        f"{kind} JSONL expects an object on line {line_number}"
+                    )
+                yield payload
+    except OSError as exc:
+        raise EvaluationError(f"cannot read {kind} JSONL: {exc}") from exc
+
+
+def _load_automation_labels(path: Path) -> dict[str, bool]:
+    labels: dict[str, bool] = {}
+    for payload in _iter_json_objects(path, kind="label"):
+        request_id = payload.get("request_id")
+        automated = payload.get("automated")
+        if not isinstance(request_id, str) or not request_id:
+            raise EvaluationError("label request_id must be a non-empty string")
+        if not isinstance(automated, bool):
+            raise EvaluationError("label automated must be a boolean")
+        if request_id in labels:
+            raise EvaluationError(f"duplicate label request_id: {request_id}")
+        labels[request_id] = automated
+    return labels
+
+
+def _evaluate(args: argparse.Namespace) -> int:
+    try:
+        labels = _load_automation_labels(Path(args.labels))
+        result = evaluate_automation_scores(
+            _iter_json_objects(Path(args.input), kind="detection"),
+            labels,
+            threshold=args.threshold,
+        )
+    except EvaluationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    return 0
 
 
 def _explain(args: argparse.Namespace) -> int:
@@ -278,6 +388,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _analyze(args)
     if args.command == "explain":
         return _explain(args)
+    if args.command == "evaluate":
+        return _evaluate(args)
     if args.command == "registry" and args.registry_command == "validate":
         return _registry_validate()
     if args.command == "sources" and args.sources_command == "status":

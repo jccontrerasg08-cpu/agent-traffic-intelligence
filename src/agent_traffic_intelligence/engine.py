@@ -62,6 +62,11 @@ class Detector:
         self._sessions = session_state or SessionFeatureState()
         self._verification_manager = verification_manager
 
+    def session_resource_metrics(self) -> dict[str, int]:
+        """Return bounded session-state metrics for an analyzer invocation."""
+
+        return self._sessions.resource_metrics()
+
     def detect(
         self,
         event: RequestEvent,

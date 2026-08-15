@@ -80,3 +80,27 @@ def test_session_windows_clients_independently() -> None:
 
     assert snapshot["session_request_count"] == 1
     assert snapshot["session_duration_seconds"] == 0.0
+
+
+def test_session_state_evicts_the_least_recently_used_client_globally() -> None:
+    state = SessionFeatureState(max_events_per_client=8, max_clients=2, window_seconds=300)
+    state.update(event(0, "/a", client_id="client-a"))
+    state.update(event(1, "/b", client_id="client-b"))
+    state.update(event(2, "/a/again", client_id="client-a"))
+    snapshot = state.update(event(3, "/c", client_id="client-c"))
+
+    assert snapshot["session_request_count"] == 1
+    assert state.resource_metrics() == {
+        "active_client_count": 2,
+        "evicted_client_count": 1,
+        "max_client_count": 2,
+    }
+
+    evicted_snapshot = state.update(event(4, "/b/again", client_id="client-b"))
+    assert evicted_snapshot["session_request_count"] == 1
+
+
+@pytest.mark.parametrize("max_clients", (0, -1))
+def test_session_state_rejects_invalid_global_client_limits(max_clients: int) -> None:
+    with pytest.raises(ValueError, match="max_clients"):
+        SessionFeatureState(max_clients=max_clients)

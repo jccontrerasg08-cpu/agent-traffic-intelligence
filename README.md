@@ -145,7 +145,9 @@ ATI accepts line-delimited JSON objects. Common Nginx-style keys are recognized:
 
 The normalizer strips query strings before generating a `RequestEvent`. Raw IPs are replaced by keyed BLAKE2b pseudonyms. Prefer a pre-pseudonymized `client_id` when your edge can provide one. Generated request identifiers include the input line number, so they are unique within one analyzed JSONL stream even when two records otherwise match.
 
-`ati analyze` rejects lines longer than 1,000,000 characters by default; use `--max-line-characters` to set a stricter or larger operational limit. When `--output` is used, ATI writes to a sibling temporary file and replaces the destination only after successful processing. This preserves the prior output on errors and makes it safe to intentionally use the same input and output path.
+`ati analyze` rejects lines longer than 1,000,000 characters by default; use `--max-line-characters` to set a stricter or larger operational limit. Session state is bounded by default to 10,000 active clients and 128 events per client. When the active-client limit is reached, ATI evicts the least-recently-used client history; tune `--max-clients`, `--max-events-per-client`, and `--session-window-seconds` for the memory envelope of the deployment. The completion summary reports processed events, active sessions, evictions, and the configured client limit.
+
+When `--output` is used, ATI writes to a sibling temporary file and replaces the destination only after successful processing. This preserves the prior output on errors and makes it safe to intentionally use the same input and output path.
 
 See [`docs/schemas.md`](docs/schemas.md) and [`examples/nginx/ati-json.conf`](examples/nginx/ati-json.conf).
 
@@ -220,6 +222,16 @@ Our intended differentiation is the combination of:
 - [x] CLI
 - [ ] real-world shadow-mode benchmark dataset
 - [ ] probability calibration
+
+### Local evaluation
+
+Evaluate authorized labels against existing automation scores without uploading or retaining a corpus:
+
+```bash
+ati evaluate detections.jsonl --labels labels.jsonl --threshold 0.5
+```
+
+The evaluator reports coverage, confusion-matrix metrics, and Brier score. It does not train or calibrate a model. See [`docs/evaluation.md`](docs/evaluation.md) for the JSONL contract, label provenance requirements, and leakage-safe benchmark design.
 
 ### V1: verified identity
 

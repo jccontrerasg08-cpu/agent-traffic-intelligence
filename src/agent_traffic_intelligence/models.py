@@ -160,6 +160,7 @@ class Detection:
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "schema_version": 1,
             "request_id": self.request_id,
             "automation_score": self.automation_score,
             "ai_score": self.ai_score,

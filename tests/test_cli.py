@@ -130,6 +130,51 @@ def test_analyze_respects_maximum_line_length(tmp_path, monkeypatch, capsys) -> 
     assert "character limit" in capsys.readouterr().err
 
 
+def test_analyze_reports_bounded_session_capacity(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--max-clients", "1"])
+
+    assert code == 0
+    summary = capsys.readouterr().err
+    assert "active_clients=1" in summary
+    assert "evicted_clients=1" in summary
+
+
+def test_evaluate_reports_local_automation_metrics(tmp_path, capsys) -> None:
+    detections_path = tmp_path / "detections.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    detections_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "a", "automation_score": 0.9}),
+                json.dumps({"request_id": "b", "automation_score": 0.1}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "a", "automated": True}),
+                json.dumps({"request_id": "b", "automated": False}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(["evaluate", str(detections_path), "--labels", str(labels_path)])
+
+    assert code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["accuracy"] == 1.0
+    assert result["evaluated_request_count"] == 2
+
+
 def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     code = main(["registry", "validate"])
 
