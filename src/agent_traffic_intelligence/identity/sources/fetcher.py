@@ -47,6 +47,9 @@ class FetchResult:
     cache_control: str | None
     redirects: int
     not_modified: bool
+    signature: str | None = None
+    signature_input: str | None = None
+    content_digest: str | None = None
 
 
 class AddressResolver(Protocol):
@@ -246,6 +249,9 @@ class SafeFetcher:
         etag = self._header(response.headers, "etag")
         last_modified = self._header(response.headers, "last-modified")
         cache_control = self._header(response.headers, "cache-control")
+        signature = self._header(response.headers, "signature")
+        signature_input = self._header(response.headers, "signature-input")
+        content_digest = self._header(response.headers, "content-digest")
         if response.status == 304:
             return FetchResult(
                 uri=uri,
@@ -257,6 +263,9 @@ class SafeFetcher:
                 cache_control=cache_control,
                 redirects=redirects,
                 not_modified=True,
+                signature=signature,
+                signature_input=signature_input,
+                content_digest=content_digest,
             )
         if not 200 <= response.status <= 299:
             raise FetchProtocolError(f"unexpected HTTP status: {response.status}")
@@ -279,6 +288,9 @@ class SafeFetcher:
             cache_control=cache_control,
             redirects=redirects,
             not_modified=False,
+            signature=signature,
+            signature_input=signature_input,
+            content_digest=content_digest,
         )
 
     @staticmethod
