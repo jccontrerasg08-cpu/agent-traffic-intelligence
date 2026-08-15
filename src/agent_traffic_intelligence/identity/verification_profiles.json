@@ -38,6 +38,8 @@
           {
             "binding_scope": "agent",
             "directory_uri": "https://agent.bot.goog/.well-known/http-message-signatures-directory",
+            "discovery_type": "directory",
+            "interoperability_profile": "ietf-httpsig-protocol-01",
             "reviewed_on": "2026-08-14",
             "signature_agent_uri": "https://agent.bot.goog",
             "subject": "Google-Agent"
