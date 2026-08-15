@@ -23,6 +23,7 @@ from agent_traffic_intelligence.identity.models import (
     VerificationOutcome,
 )
 from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
 DIRECTORY_URI = "https://agent.example/.well-known/http-message-signatures-directory"
@@ -176,6 +177,22 @@ def test_valid_chain_binds_exact_agent_and_replay() -> None:
     assert first.binding_scope is BindingScope.AGENT
     assert first.details["replay_protected"] is True
     assert second.outcome is VerificationOutcome.MISMATCH
+
+
+def test_evidence_reports_current_protocol_profile() -> None:
+    evidence = verifier(good_result(nonce=None)).verify(
+        context=context(),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.source_profile == (
+        f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+"
+        f"{DEFAULT_STANDARDS_PROFILE.message_signatures_directory}"
+    )
+    assert "architecture-05" not in evidence.source_profile
+    assert "directory-05" not in evidence.source_profile
 
 
 def test_unsigned_or_wrong_signature_agent_is_mismatch() -> None:
