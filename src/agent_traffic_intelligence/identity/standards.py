@@ -22,6 +22,6 @@ DEFAULT_STANDARDS_PROFILE = StandardsProfile(
     web_bot_auth_architecture="draft-meunier-web-bot-auth-architecture-05",
     message_signatures_directory="draft-meunier-http-message-signatures-directory-05",
     jafar="draft-illyes-webbotauth-jafar-00",
-    agent_card="draft-meunier-webbotauth-registry-03",
+    agent_card="draft-meunier-webbotauth-registry-02",
     reviewed_on="2026-08-14",
 )
