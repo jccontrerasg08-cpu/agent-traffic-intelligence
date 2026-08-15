@@ -69,6 +69,112 @@ def test_analyze_fails_cleanly_without_hash_key_for_raw_ip(tmp_path, monkeypatch
     assert "ATI_HASH_KEY" in capsys.readouterr().err
 
 
+def test_analyze_replaces_same_input_output_only_after_success(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    path = tmp_path / "access.jsonl"
+    write_input(path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(path), "--output", str(path)])
+
+    assert code == 0
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert "processed=2" in capsys.readouterr().err
+
+
+def test_analyze_preserves_existing_output_when_parsing_fails(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    input_path = tmp_path / "access.jsonl"
+    output_path = tmp_path / "detections.jsonl"
+    input_path.write_text('{"not":"a complete event"}\n', encoding="utf-8")
+    output_path.write_text("previous-successful-output\n", encoding="utf-8")
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--output", str(output_path)])
+
+    assert code == 2
+    assert output_path.read_text(encoding="utf-8") == "previous-successful-output\n"
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_reports_missing_input_without_traceback(tmp_path, capsys) -> None:
+    missing_path = tmp_path / "missing.jsonl"
+
+    code = main(["analyze", str(missing_path)])
+
+    assert code == 2
+    assert "error:" in capsys.readouterr().err
+
+
+def test_analyze_rejects_oversized_hash_key(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "x" * 65)
+
+    code = main(["analyze", str(input_path)])
+
+    assert code == 2
+    assert "64-byte" in capsys.readouterr().err
+
+
+def test_analyze_respects_maximum_line_length(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--max-line-characters", "10"])
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
+def test_analyze_reports_bounded_session_capacity(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "access.jsonl"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(["analyze", str(input_path), "--max-clients", "1"])
+
+    assert code == 0
+    summary = capsys.readouterr().err
+    assert "active_clients=1" in summary
+    assert "evicted_clients=1" in summary
+
+
+def test_evaluate_reports_local_automation_metrics(tmp_path, capsys) -> None:
+    detections_path = tmp_path / "detections.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    detections_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "a", "automation_score": 0.9}),
+                json.dumps({"request_id": "b", "automation_score": 0.1}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"request_id": "a", "automated": True}),
+                json.dumps({"request_id": "b", "automated": False}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(["evaluate", str(detections_path), "--labels", str(labels_path)])
+
+    assert code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["accuracy"] == 1.0
+    assert result["evaluated_request_count"] == 2
+
+
 def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     code = main(["registry", "validate"])
 

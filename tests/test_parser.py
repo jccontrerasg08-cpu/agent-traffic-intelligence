@@ -71,3 +71,41 @@ def test_normalizer_rejects_naive_timestamp() -> None:
 
     with pytest.raises(ParseError, match="timezone-aware"):
         normalize_record(record, hash_key=b"key")
+
+
+def test_normalizer_parses_explicit_boolean_strings() -> None:
+    record = base_record()
+    record["has_cookie"] = "false"
+    record["has_referer"] = "1"
+    record["has_accept_language"] = "off"
+
+    event = normalize_record(record, hash_key=b"key")
+
+    assert event.has_cookie is False
+    assert event.has_referer is True
+    assert event.has_accept_language is False
+
+
+def test_normalizer_rejects_unknown_boolean_strings() -> None:
+    record = base_record()
+    record["has_cookie"] = "sometimes"
+
+    with pytest.raises(ParseError, match="has_cookie"):
+        normalize_record(record, hash_key=b"key")
+
+
+def test_iter_jsonl_uses_line_number_to_disambiguate_generated_request_ids() -> None:
+    record = base_record()
+    record.pop("remote_addr")
+    record["client_id"] = "external:pseudonym-1"
+    serialized = json.dumps(record)
+
+    events = tuple(iter_jsonl(StringIO(f"{serialized}\n{serialized}\n"), hash_key=None))
+
+    assert len(events) == 2
+    assert events[0].request_id != events[1].request_id
+
+
+def test_iter_jsonl_rejects_lines_over_the_configured_limit() -> None:
+    with pytest.raises(ParseError, match="character limit"):
+        tuple(iter_jsonl(StringIO("{}\n"), hash_key=None, max_line_characters=1))
