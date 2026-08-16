@@ -75,10 +75,17 @@ def _data_uri(resolver: InlineSigningResolver) -> str:
     )
 
 
-def _signed_message(resolver: InlineSigningResolver) -> Message:
-    uri = _data_uri(resolver)
+def _signed_message(
+    resolver: InlineSigningResolver,
+    *,
+    discovery_type: str = "directory",
+    uri: str | None = None,
+) -> Message:
+    signature_agent_uri = uri or _data_uri(resolver)
     message = Message("GET", "https://example.com/docs", {})
-    message.headers["Signature-Agent"] = f'sig1="{uri}";type=directory'
+    message.headers["Signature-Agent"] = (
+        f'sig1="{signature_agent_uri}";type={discovery_type}'
+    )
     signer = hms.HTTPMessageSigner(
         signature_algorithm=algorithms.ED25519,
         key_resolver=resolver,
@@ -111,17 +118,10 @@ def _context(message: Message) -> VerificationContext:
     )
 
 
-def test_inline_data_directory_authenticates_key_without_claiming_agent_identity(
-    tmp_path,
-) -> None:
-    now = datetime.now(UTC)
-    resolver = InlineSigningResolver()
-    message = _signed_message(resolver)
-    manager = ProviderAwareVerificationManager(SourceCache(tmp_path))
-    manager._profiles = {}
-    event = RequestEvent(
+def _event(now: datetime, request_id: str) -> RequestEvent:
+    return RequestEvent(
         timestamp=now,
-        request_id="inline-data-1",
+        request_id=request_id,
         client_id="client-1",
         method="GET",
         path="/docs",
@@ -131,17 +131,34 @@ def test_inline_data_directory_authenticates_key_without_claiming_agent_identity
         user_agent="ExampleBot/1.0",
         source="test",
     )
-    claim = IdentityClaim(
+
+
+def _claim() -> IdentityClaim:
+    return IdentityClaim(
         provider="example",
         agent="ExampleBot",
         actor_type=ActorType.AI_CRAWLER,
         intent="test",
     )
 
-    resolution = manager.verify(
-        event=event,
+
+def _manager(tmp_path) -> ProviderAwareVerificationManager:
+    manager = ProviderAwareVerificationManager(SourceCache(tmp_path))
+    manager._profiles = {}
+    return manager
+
+
+def test_inline_data_directory_authenticates_key_without_claiming_agent_identity(
+    tmp_path,
+) -> None:
+    now = datetime.now(UTC)
+    resolver = InlineSigningResolver()
+    inline_uri = _data_uri(resolver)
+    message = _signed_message(resolver, uri=inline_uri)
+    resolution = _manager(tmp_path).verify(
+        event=_event(now, "inline-data-1"),
         context=_context(message),
-        claim=claim,
+        claim=_claim(),
     )
 
     assert resolution.state is VerificationState.CLAIMED
@@ -155,3 +172,59 @@ def test_inline_data_directory_authenticates_key_without_claiming_agent_identity
     assert len(passed) == 1
     assert passed[0].binding_scope is BindingScope.KEY
     assert passed[0].subject == resolver.key_id
+    assert passed[0].source_uri == "urn:ati:inline-data-directory:redacted"
+    serialized = json.dumps(resolution.to_dict(), sort_keys=True)
+    assert inline_uri not in serialized
+    assert "data:application/http-message-signatures-directory+json" not in serialized
+
+
+@pytest.mark.parametrize("discovery_type", ["jwks_uri", "cimd"])
+def test_inline_data_is_not_accepted_for_non_directory_discovery_types(
+    tmp_path,
+    discovery_type: str,
+) -> None:
+    now = datetime.now(UTC)
+    resolver = InlineSigningResolver()
+    inline_uri = _data_uri(resolver)
+    message = _signed_message(
+        resolver,
+        discovery_type=discovery_type,
+        uri=inline_uri,
+    )
+    resolution = _manager(tmp_path).verify(
+        event=_event(now, f"inline-data-{discovery_type}"),
+        context=_context(message),
+        claim=_claim(),
+    )
+
+    assert resolution.state is VerificationState.CLAIMED
+    assert resolution.agent_verified is False
+    assert not any(
+        evidence.method is VerificationMethod.WEB_BOT_AUTH
+        and evidence.outcome is VerificationOutcome.PASS
+        for evidence in resolution.methods
+    )
+    assert inline_uri not in json.dumps(resolution.to_dict(), sort_keys=True)
+
+
+def test_invalid_inline_data_media_type_is_ignored_without_payload_leak(tmp_path) -> None:
+    now = datetime.now(UTC)
+    resolver = InlineSigningResolver()
+    payload = b'{"secret-marker":"must-not-leak"}'
+    inline_uri = "data:application/json," + quote_from_bytes(payload, safe="")
+    message = _signed_message(resolver, uri=inline_uri)
+    resolution = _manager(tmp_path).verify(
+        event=_event(now, "inline-data-invalid-media"),
+        context=_context(message),
+        claim=_claim(),
+    )
+
+    assert resolution.state is VerificationState.CLAIMED
+    assert not any(
+        evidence.method is VerificationMethod.WEB_BOT_AUTH
+        and evidence.outcome is VerificationOutcome.PASS
+        for evidence in resolution.methods
+    )
+    serialized = json.dumps(resolution.to_dict(), sort_keys=True)
+    assert inline_uri not in serialized
+    assert "must-not-leak" not in serialized
