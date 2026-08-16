@@ -4,6 +4,7 @@ import base64
 
 import pytest
 
+import agent_traffic_intelligence.identity.crypto.jwk_set as jwk_set_module
 from agent_traffic_intelligence.identity.crypto.jwk_set import (
     JwkSetFormatError,
     JwkSetKey,
@@ -13,6 +14,11 @@ from agent_traffic_intelligence.identity.crypto.jwk_set import (
 
 def okp_jwk(**extra: object) -> dict[str, object]:
     x = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=").decode("ascii")
+    return {"kty": "OKP", "crv": "Ed25519", "x": x, **extra}
+
+
+def distinct_okp_jwk(seed: int, **extra: object) -> dict[str, object]:
+    x = base64.urlsafe_b64encode(bytes([seed]) * 32).rstrip(b"=").decode("ascii")
     return {"kty": "OKP", "crv": "Ed25519", "x": x, **extra}
 
 
@@ -78,3 +84,54 @@ def test_generic_jwk_set_key_rejects_invalid_validity_window() -> None:
             expires=10,
             jwk=okp_jwk(),
         )
+
+
+def test_key_selection_prefers_operator_kid_before_thumbprint_fallback() -> None:
+    second = parse_jwk_set({"keys": [distinct_okp_jwk(2, kid="other")]}).keys[0]
+    parsed = parse_jwk_set(
+        {
+            "keys": [
+                distinct_okp_jwk(1, kid=second.thumbprint),
+                distinct_okp_jwk(2, kid="other"),
+            ]
+        }
+    )
+
+    selected = jwk_set_module.select_jwk_set_key(parsed, second.thumbprint)
+
+    assert selected.thumbprint == parsed.keys[0].thumbprint
+    assert selected.kid == second.thumbprint
+
+
+def test_key_selection_falls_back_to_computed_thumbprint() -> None:
+    parsed = parse_jwk_set(
+        {"keys": [distinct_okp_jwk(3, kid="operator-label")]}
+    )
+    key = parsed.keys[0]
+
+    selected = jwk_set_module.select_jwk_set_key(parsed, key.thumbprint)
+
+    assert selected is key
+    assert selected.kid == "operator-label"
+
+
+def test_key_selection_rejects_ambiguous_operator_kid() -> None:
+    parsed = parse_jwk_set(
+        {
+            "keys": [
+                distinct_okp_jwk(4, kid="shared-label"),
+                distinct_okp_jwk(5, kid="shared-label"),
+            ]
+        }
+    )
+
+    with pytest.raises(jwk_set_module.JwkSetKeySelectionError, match="ambiguous"):
+        jwk_set_module.select_jwk_set_key(parsed, "shared-label")
+
+
+def test_key_selection_rejects_unknown_or_empty_keyid() -> None:
+    parsed = parse_jwk_set({"keys": [distinct_okp_jwk(6, kid="known")]})
+
+    for key_id in ("missing", ""):
+        with pytest.raises(jwk_set_module.JwkSetKeySelectionError):
+            jwk_set_module.select_jwk_set_key(parsed, key_id)
