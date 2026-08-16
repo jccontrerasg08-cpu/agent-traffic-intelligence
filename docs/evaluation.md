@@ -2,7 +2,7 @@
 
 ## Labels
 
-Maintain both `label` and `label_confidence`/`label_source`. When running the optional manifest-gated evaluation path, each JSONL label must use `automated`, `label_source`, and numeric `label_confidence` in `[0, 1]`.
+Maintain both `label` and `label_confidence`/`label_source`. When running the optional manifest-gated evaluation path, each JSONL label must use `automated`, `label_source`, numeric `label_confidence` in `[0, 1]`, and the manifest’s exact `corpus_id`.
 
 Strong labels can come from controlled traffic generation or verifiable provider identity. User-Agent-only labels are weak because they are spoofable.
 
@@ -85,7 +85,11 @@ Use `--manifest` when results are intended to inform a benchmark, threshold, or 
 }
 ```
 
-The validator rejects unauthorized corpora, unknown manifest fields, missing leakage-control strategies, duplicate strategies, timezone-free or invalid collection windows, and missing sampling-bias disclosure. This does not train, calibrate, or retain a model; it establishes evidence prerequisites only.
+The validator rejects unauthorized corpora, unknown manifest fields, missing leakage-control strategies, duplicate strategies, timezone-free or invalid collection windows, and missing sampling-bias disclosure. Manifest-gated labels must also bind to the exact `corpus_id`, which prevents records from one authorized corpus being mixed silently into another. Their exact permitted fields are `request_id`, `automated`, `label_source`, `label_confidence`, and `corpus_id`; unexpected fields are rejected rather than silently ignored. This does not train, calibrate, or retain a model; it establishes evidence prerequisites only.
+
+```json
+{"request_id":"privacy-safe-request-id","automated":true,"label_source":"controlled-generator","label_confidence":1.0,"corpus_id":"owned-shadow-2026-08"}
+```
 
 ```bash
 ati evaluate detections.jsonl --labels labels.jsonl --manifest corpus-manifest.json --threshold 0.5

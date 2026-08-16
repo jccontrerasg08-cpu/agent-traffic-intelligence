@@ -228,6 +228,7 @@ def test_evaluate_manifest_requires_label_provenance(tmp_path, capsys) -> None:
                 "automated": True,
                 "label_source": "controlled-generator",
                 "label_confidence": 1.0,
+                "corpus_id": "owned-shadow-2026-08",
             }
         )
         + "\n",
@@ -246,6 +247,61 @@ def test_evaluate_manifest_requires_label_provenance(tmp_path, capsys) -> None:
 
     assert code == 0
     assert json.loads(capsys.readouterr().out)["evaluated_request_count"] == 1
+
+    labels_path.write_text(
+        json.dumps(
+            {
+                "request_id": "a",
+                "automated": True,
+                "label_source": "controlled-generator",
+                "label_confidence": 1.0,
+                "corpus_id": "other-corpus",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    code = main(
+        [
+            "evaluate",
+            str(detections_path),
+            "--labels",
+            str(labels_path),
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
+
+    assert code == 2
+    assert "corpus_id" in capsys.readouterr().err
+
+    labels_path.write_text(
+        json.dumps(
+            {
+                "request_id": "a",
+                "automated": True,
+                "label_source": "controlled-generator",
+                "label_confidence": 1.0,
+                "corpus_id": "owned-shadow-2026-08",
+                "raw_ip_address": "203.0.113.9",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    code = main(
+        [
+            "evaluate",
+            str(detections_path),
+            "--labels",
+            str(labels_path),
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
+
+    assert code == 2
+    assert "unsupported fields" in capsys.readouterr().err
 
 
 def test_evaluate_rejects_oversized_detection_line(tmp_path, capsys) -> None:

@@ -69,7 +69,7 @@ class AutomationEvaluation:
         }
 
 
-def validate_corpus_manifest(manifest: Mapping[str, Any]) -> None:
+def validate_corpus_manifest(manifest: Mapping[str, Any]) -> str:
     """Reject unapproved or leakage-prone evaluation corpus metadata."""
 
     unexpected_fields = set(manifest) - _MANIFEST_FIELDS
@@ -83,7 +83,8 @@ def validate_corpus_manifest(manifest: Mapping[str, Any]) -> None:
         or manifest["schema_version"] != 1
     ):
         raise EvaluationError("corpus manifest schema_version must be 1")
-    if not isinstance(manifest["corpus_id"], str) or not manifest["corpus_id"].strip():
+    corpus_id = manifest["corpus_id"]
+    if not isinstance(corpus_id, str) or not corpus_id.strip():
         raise EvaluationError("corpus manifest corpus_id must be a non-empty string")
     if manifest["authorized"] is not True:
         raise EvaluationError("corpus manifest must explicitly be authorized")
@@ -125,6 +126,7 @@ def validate_corpus_manifest(manifest: Mapping[str, Any]) -> None:
         raise EvaluationError(
             "corpus manifest known_sampling_biases must be a non-empty list of strings"
         )
+    return corpus_id
 
 
 def _automation_score(payload: Mapping[str, Any]) -> tuple[str, float]:
