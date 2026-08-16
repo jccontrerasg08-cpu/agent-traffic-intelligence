@@ -260,4 +260,5 @@ def _revalidated_document(
         last_modified=result.last_modified or previous.metadata.last_modified,
         validation_status=ValidationStatus.VALID,
         key_authority_bindings=previous.metadata.key_authority_bindings,
+        acquisition=previous.metadata.acquisition,
     )
