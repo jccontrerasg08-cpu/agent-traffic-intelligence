@@ -197,6 +197,25 @@ class _CryptoAdapter:
                 source_uri=self.profile.directory_uri,
                 explanation="Web Bot Auth key directory is not present in the local cache",
             )
+        expires_at = document.metadata.expires_at
+        if expires_at is not None and expires_at < event.timestamp:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.STALE,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation="cached Web Bot Auth key directory is stale",
+                source_uri=document.metadata.uri,
+                source_profile=document.metadata.parser_profile,
+                retrieved_at=document.metadata.retrieved_at,
+                expires_at=expires_at,
+                source_sha256=document.metadata.sha256,
+                details={
+                    "cached": True,
+                    "acquisition": document.metadata.acquisition.value,
+                },
+            )
         try:
             directory = parse_key_directory(document.content)
         except DirectoryFormatError as exc:
