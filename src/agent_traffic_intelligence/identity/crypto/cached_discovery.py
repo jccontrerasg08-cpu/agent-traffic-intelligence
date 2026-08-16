@@ -101,6 +101,33 @@ def _resolve_directory(
     )
 
 
+def _resolve_jwks_uri(
+    reference: SignatureAgentReference,
+    *,
+    cache: SourceCache,
+    trust_policy: SourceTrustPolicy,
+    now: datetime,
+) -> ResolvedSignatureAgentMaterial:
+    target = plan_signature_agent_resolution(reference)
+    document = _require_cached_document(
+        target.fetch_uri,
+        expected_type=SourceType.JWK_SET,
+        cache=cache,
+        trust_policy=trust_policy,
+        now=now,
+    )
+    try:
+        jwk_set = parse_jwk_set(document.content)
+    except JwkSetFormatError as exc:
+        raise CachedDiscoveryError("cached Signature-Agent JWK Set is malformed") from exc
+    return ResolvedSignatureAgentMaterial(
+        identifier_uri=target.identifier_uri,
+        discovery_type=SignatureAgentDiscoveryType.JWKS_URI,
+        jwk_set=jwk_set,
+        documents=(document,),
+    )
+
+
 def resolve_cached_signature_agent(
     reference: SignatureAgentReference,
     *,
@@ -112,6 +139,13 @@ def resolve_cached_signature_agent(
 
     if reference.discovery_type is SignatureAgentDiscoveryType.DIRECTORY:
         return _resolve_directory(
+            reference,
+            cache=cache,
+            trust_policy=trust_policy,
+            now=now,
+        )
+    if reference.discovery_type is SignatureAgentDiscoveryType.JWKS_URI:
+        return _resolve_jwks_uri(
             reference,
             cache=cache,
             trust_policy=trust_policy,
