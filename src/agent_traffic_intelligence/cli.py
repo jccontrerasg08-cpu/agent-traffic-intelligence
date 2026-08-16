@@ -331,7 +331,7 @@ def _iter_json_objects(
         raise EvaluationError(f"cannot read {kind} JSONL: {exc}") from exc
 
 
-def _load_corpus_manifest(path: Path, *, max_characters: int) -> None:
+def _load_corpus_manifest(path: Path, *, max_characters: int) -> str:
     try:
         with path.open("r", encoding="utf-8") as stream:
             content = stream.read(max_characters + 1)
@@ -347,14 +347,14 @@ def _load_corpus_manifest(path: Path, *, max_characters: int) -> None:
         raise EvaluationError("corpus manifest has invalid JSON") from exc
     if not isinstance(manifest, dict):
         raise EvaluationError("corpus manifest expects one JSON object")
-    validate_corpus_manifest(manifest)
+    return validate_corpus_manifest(manifest)
 
 
 def _load_automation_labels(
     path: Path,
     *,
     max_line_characters: int,
-    require_provenance: bool = False,
+    corpus_id: str | None = None,
 ) -> dict[str, bool]:
     labels: dict[str, bool] = {}
     for payload in _iter_json_objects(
@@ -368,9 +368,18 @@ def _load_automation_labels(
             raise EvaluationError("label request_id must be a non-empty string")
         if not isinstance(automated, bool):
             raise EvaluationError("label automated must be a boolean")
-        if require_provenance:
+        if corpus_id is not None:
+            if set(payload) - {
+                "request_id",
+                "automated",
+                "label_source",
+                "label_confidence",
+                "corpus_id",
+            }:
+                raise EvaluationError("manifest-gated label contains unsupported fields")
             label_source = payload.get("label_source")
             label_confidence = payload.get("label_confidence")
+            label_corpus_id = payload.get("corpus_id")
             if not isinstance(label_source, str) or not label_source.strip():
                 raise EvaluationError("label label_source must be a non-empty string")
             if (
@@ -381,6 +390,8 @@ def _load_automation_labels(
                 raise EvaluationError(
                     "label label_confidence must be a number between 0 and 1"
                 )
+            if label_corpus_id != corpus_id:
+                raise EvaluationError("label corpus_id must match the corpus manifest")
         if request_id in labels:
             raise EvaluationError(f"duplicate label request_id: {request_id}")
         labels[request_id] = automated
@@ -389,15 +400,18 @@ def _load_automation_labels(
 
 def _evaluate(args: argparse.Namespace) -> int:
     try:
-        if args.manifest is not None:
+        corpus_id = (
             _load_corpus_manifest(
                 Path(args.manifest),
                 max_characters=args.max_line_characters,
             )
+            if args.manifest is not None
+            else None
+        )
         labels = _load_automation_labels(
             Path(args.labels),
             max_line_characters=args.max_line_characters,
-            require_provenance=args.manifest is not None,
+            corpus_id=corpus_id,
         )
         result = evaluate_automation_scores(
             _iter_json_objects(

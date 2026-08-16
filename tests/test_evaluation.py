@@ -78,7 +78,7 @@ def test_evaluation_rejects_label_with_empty_request_id() -> None:
 
 
 def test_corpus_manifest_requires_authorization_leakage_splits_and_biases() -> None:
-    validate_corpus_manifest(manifest())
+    assert validate_corpus_manifest(manifest()) == "owned-shadow-2026-08"
 
     missing_split = manifest()
     missing_split["split_strategies"] = ["grouped_session_client"]
