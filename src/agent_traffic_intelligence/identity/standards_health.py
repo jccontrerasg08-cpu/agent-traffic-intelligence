@@ -7,8 +7,15 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
+from urllib.request import (
+    HTTPRedirectHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+)
 
 from agent_traffic_intelligence.identity.standards import (
     DEFAULT_STANDARDS_PROFILE,
@@ -30,6 +37,7 @@ _REVIEW_REQUIRED_STATES = frozenset(
         "withdrawn",
     }
 )
+_USER_AGENT = "agent-traffic-intelligence/0.1 standards-health"
 
 
 class DatatrackerPayloadError(ValueError):
@@ -112,6 +120,80 @@ class DatatrackerTransport(Protocol):
         timeout_seconds: float,
         max_body_bytes: int,
     ) -> DatatrackerHttpResponse: ...
+
+
+class DatatrackerNoRedirectHandler(HTTPRedirectHandler):
+    """Prevent urllib from following any HTTP redirect."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+class UrllibDatatrackerTransport:
+    """Minimal stdlib HTTPS transport for explicit standards-health checks."""
+
+    def __init__(self, *, opener: Any | None = None) -> None:
+        self._opener = opener or build_opener(
+            ProxyHandler({}),
+            DatatrackerNoRedirectHandler(),
+        )
+
+    def get(
+        self,
+        url: str,
+        *,
+        timeout_seconds: float,
+        max_body_bytes: int,
+    ) -> DatatrackerHttpResponse:
+        request = Request(
+            url,
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "User-Agent": _USER_AGENT,
+            },
+        )
+        try:
+            with self._opener.open(request, timeout=timeout_seconds) as response:
+                return self._response_from_handle(response, max_body_bytes=max_body_bytes)
+        except HTTPError as exc:
+            return self._response_from_handle(exc, max_body_bytes=max_body_bytes)
+        except (URLError, TimeoutError, OSError) as exc:
+            raise StandardsHealthOperationalError(
+                f"Datatracker transport failed: {type(exc).__name__}"
+            ) from exc
+
+    @staticmethod
+    def _response_from_handle(
+        response: Any,
+        *,
+        max_body_bytes: int,
+    ) -> DatatrackerHttpResponse:
+        body = bytes(response.read(max_body_bytes + 1))
+        headers = getattr(response, "headers", None)
+        content_type: str | None = None
+        if headers is not None:
+            value = headers.get("Content-Type")
+            if value is not None:
+                content_type = str(value)
+        status = getattr(response, "status", None)
+        if status is None:
+            status = response.getcode()
+        return DatatrackerHttpResponse(
+            status=int(status),
+            final_url=str(response.geturl()),
+            content_type=content_type,
+            body=body,
+        )
 
 
 class DatatrackerJsonClient:
