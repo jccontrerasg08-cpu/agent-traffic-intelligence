@@ -19,6 +19,7 @@ from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult, SafeFetcher
 from agent_traffic_intelligence.identity.sources.models import (
     KeyAuthorityBinding,
+    SourceAcquisition,
     SourceDocument,
     SourceType,
     ValidationStatus,
@@ -233,6 +234,7 @@ def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocume
         last_modified=result.last_modified,
         validation_status=ValidationStatus.VALID,
         key_authority_bindings=key_authority_bindings,
+        acquisition=SourceAcquisition.DIRECT_HTTPS,
     )
 
 
