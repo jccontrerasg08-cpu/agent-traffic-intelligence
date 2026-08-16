@@ -305,7 +305,7 @@ class WebBotAuthVerifier:
         timestamp = int(now.timestamp())
         if key.not_before is not None and timestamp < key.not_before:
             return False
-        return key.expires is None or timestamp <= key.expires
+        return key.expires is None or timestamp < key.expires
 
     @staticmethod
     def _key_thumbprint(key: VerificationKey) -> str:

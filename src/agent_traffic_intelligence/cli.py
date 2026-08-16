@@ -116,8 +116,8 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument(
         "--manifest",
         help=(
-            "Single-object JSON corpus manifest. When supplied, labels must include "
-            "label_source and label_confidence."
+            "Single-object JSON corpus manifest. When supplied, labels must contain only "
+            "request_id, automated, label_source, label_confidence, and matching corpus_id."
         ),
     )
     evaluate.add_argument(

@@ -152,6 +152,8 @@ git commit -m "feat: define identity verification contracts"
 
 **Produces:** `NegativeSemantics`, `StandardsProfile`, `ProviderProfile`, `RangeSourceProfile`, `FcrdnsProfile`, `CryptoProfile`, `load_provider_profiles()`, `provider_profile()`.
 
+> **Historical identifier note:** The Task 2 snippet below is preserved as the original V1 execution record and uses superseded draft-era names. Do not reuse it as a current profile contract; the implemented pins are protocol-01, directory-00, and registry-03 in [`docs/standards-status.md`](../../standards-status.md).
+
 - [ ] **Step 1: Write failing tests**
 
 ```python
