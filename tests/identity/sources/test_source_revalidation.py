@@ -12,6 +12,7 @@ from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult
 from agent_traffic_intelligence.identity.sources.models import (
     KeyAuthorityBinding,
+    SourceAcquisition,
     SourceDocument,
     SourceType,
 )
@@ -76,6 +77,7 @@ def stored_directory() -> SourceDocument:
         parser_profile="directory-05",
         etag='"v1"',
         key_authority_bindings=(binding,),
+        acquisition=SourceAcquisition.DIRECT_HTTPS,
     )
 
 
@@ -107,3 +109,4 @@ def test_304_revalidation_preserves_existing_key_authority_binding(
     assert cached.metadata.sha256 == original.metadata.sha256
     assert cached.metadata.etag == '"v2"'
     assert cached.metadata.key_authority_bindings == original.metadata.key_authority_bindings
+    assert cached.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS
