@@ -354,6 +354,111 @@ def test_evaluate_rejects_oversized_label_line(tmp_path, capsys) -> None:
     assert "character limit" in capsys.readouterr().err
 
 
+def test_run_creates_an_atomic_privacy_safe_local_artifact_directory(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    input_path = tmp_path / "access.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    manifest_path = tmp_path / "manifest.json"
+    run_dir = tmp_path / "run"
+    write_input(input_path)
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+    reference_detections = tmp_path / "reference-detections.jsonl"
+    assert main(["analyze", str(input_path), "--output", str(reference_detections)]) == 0
+    request_ids = [
+        json.loads(line)["request_id"]
+        for line in reference_detections.read_text(encoding="utf-8").splitlines()
+    ]
+    capsys.readouterr()
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "corpus_id": "owned-shadow-2026-08",
+                "authorized": True,
+                "collection_start": "2026-08-01T00:00:00Z",
+                "collection_end": "2026-08-02T00:00:00Z",
+                "split_strategies": [
+                    "grouped_session_client",
+                    "temporal_holdout",
+                    "unseen_family_holdout",
+                    "provider_ua_ablation",
+                ],
+                "known_sampling_biases": ["controlled-traffic-overrepresentation"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "request_id": request_id,
+                    "automated": index == 0,
+                    "label_source": "controlled-generator",
+                    "label_confidence": 1.0,
+                    "corpus_id": "owned-shadow-2026-08",
+                }
+            )
+            for index, request_id in enumerate(request_ids)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "run",
+            str(input_path),
+            "--run-dir",
+            str(run_dir),
+            "--labels",
+            str(labels_path),
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
+
+    assert code == 0
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert run["schema_version"] == 1
+    assert run["corpus_id"] == "owned-shadow-2026-08"
+    assert run["artifacts"]["detections"] == "detections.jsonl"
+    assert run["artifacts"]["evaluation"] == "evaluation.json"
+    evaluation = json.loads((run_dir / "evaluation.json").read_text(encoding="utf-8"))
+    assert evaluation["evaluated_request_count"] == 2
+    serialized = "".join(
+        path.read_text(encoding="utf-8") for path in run_dir.iterdir() if path.is_file()
+    )
+    assert "203.0.113" not in serialized
+    assert "never-log-this" not in serialized
+    assert "do-not-log" not in serialized
+    assert "processed=2" in capsys.readouterr().err
+
+
+def test_run_refuses_to_overwrite_an_existing_artifact_directory(tmp_path, capsys) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "run.json").write_text("existing\n", encoding="utf-8")
+
+    code = main(
+        [
+            "run",
+            "unused.jsonl",
+            "--run-dir",
+            str(run_dir),
+            "--labels",
+            "unused-labels.jsonl",
+            "--manifest",
+            "unused-manifest.json",
+        ]
+    )
+
+    assert code == 2
+    assert (run_dir / "run.json").read_text(encoding="utf-8") == "existing\n"
+    assert "already exists" in capsys.readouterr().err
+
+
 def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     code = main(["registry", "validate"])
 

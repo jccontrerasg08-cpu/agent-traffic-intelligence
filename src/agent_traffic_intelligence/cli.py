@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import TextIO
 
+from agent_traffic_intelligence import __version__
 from agent_traffic_intelligence.engine import Detector
 from agent_traffic_intelligence.evaluation import (
     EvaluationError,
@@ -55,48 +57,22 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     analyze = subparsers.add_parser("analyze", help="Analyze JSONL access logs.")
-    analyze.add_argument("input", help="JSONL input path, or '-' for stdin.")
+    _add_analysis_arguments(analyze)
     analyze.add_argument("--output", help="Write detection JSONL to this path; defaults to stdout.")
-    analyze.add_argument("--source", default="jsonl", help="Source adapter label stored on events.")
-    analyze.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
+
+    run = subparsers.add_parser(
+        "run",
+        help="Create one local, atomic analysis and evaluation artifact directory.",
     )
-    analyze.add_argument(
-        "--max-clients",
-        type=_positive_integer,
-        default=10_000,
-        help="Retain at most this many active client sessions with LRU eviction (default: 10000).",
-    )
-    analyze.add_argument(
-        "--max-events-per-client",
-        type=_positive_integer,
-        default=128,
-        help="Retain at most this many events per active client session (default: 128).",
-    )
-    analyze.add_argument(
-        "--session-window-seconds",
-        type=_positive_integer,
-        default=300,
-        help="Discard session events older than this window in seconds (default: 300).",
-    )
-    analyze.add_argument(
-        "--hash-key-env",
-        default="ATI_HASH_KEY",
-        help="Environment variable containing the client pseudonymization key.",
-    )
-    analyze.add_argument(
-        "--verify-identity",
-        action="store_true",
-        help="Enable V1 identity verification. Sources remain offline unless explicitly refreshed.",
-    )
-    analyze.add_argument(
-        "--verification-mode",
-        choices=[item.value for item in VerificationMode],
-        default=VerificationMode.OFFLINE.value,
-        help="Identity verification mode; defaults to offline.",
+    _add_analysis_arguments(run)
+    run.add_argument("--run-dir", required=True, help="New local directory for safe outputs.")
+    run.add_argument("--labels", required=True, help="Authorized local JSONL labels.")
+    run.add_argument("--manifest", required=True, help="Authorized local corpus manifest.")
+    run.add_argument(
+        "--threshold",
+        type=_unit_interval,
+        default=0.5,
+        help="Automation decision threshold from 0 to 1 (default: 0.5).",
     )
 
     explain = subparsers.add_parser("explain", help="Pretty-print one detection and its evidence.")
@@ -158,6 +134,51 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _add_analysis_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("input", help="JSONL input path, or '-' for stdin.")
+    parser.add_argument("--source", default="jsonl", help="Source adapter label stored on events.")
+    parser.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+    parser.add_argument(
+        "--max-clients",
+        type=_positive_integer,
+        default=10_000,
+        help="Retain at most this many active client sessions with LRU eviction (default: 10000).",
+    )
+    parser.add_argument(
+        "--max-events-per-client",
+        type=_positive_integer,
+        default=128,
+        help="Retain at most this many events per active client session (default: 128).",
+    )
+    parser.add_argument(
+        "--session-window-seconds",
+        type=_positive_integer,
+        default=300,
+        help="Discard session events older than this window in seconds (default: 300).",
+    )
+    parser.add_argument(
+        "--hash-key-env",
+        default="ATI_HASH_KEY",
+        help="Environment variable containing the client pseudonymization key.",
+    )
+    parser.add_argument(
+        "--verify-identity",
+        action="store_true",
+        help="Enable V1 identity verification. Sources remain offline unless explicitly refreshed.",
+    )
+    parser.add_argument(
+        "--verification-mode",
+        choices=[item.value for item in VerificationMode],
+        default=VerificationMode.OFFLINE.value,
+        help="Identity verification mode; defaults to offline.",
+    )
 
 
 def _unit_interval(value: str) -> float:
@@ -398,34 +419,119 @@ def _load_automation_labels(
     return labels
 
 
+def _evaluate_files(
+    *,
+    detections: Path,
+    labels_path: Path,
+    manifest_path: Path | None,
+    threshold: float,
+    max_line_characters: int,
+) -> tuple[dict[str, int | float], str | None]:
+    corpus_id = (
+        _load_corpus_manifest(manifest_path, max_characters=max_line_characters)
+        if manifest_path is not None
+        else None
+    )
+    labels = _load_automation_labels(
+        labels_path,
+        max_line_characters=max_line_characters,
+        corpus_id=corpus_id,
+    )
+    result = evaluate_automation_scores(
+        _iter_json_objects(
+            detections,
+            kind="detection",
+            max_line_characters=max_line_characters,
+        ),
+        labels,
+        threshold=threshold,
+    )
+    return result.to_dict(), corpus_id
+
+
 def _evaluate(args: argparse.Namespace) -> int:
     try:
-        corpus_id = (
-            _load_corpus_manifest(
-                Path(args.manifest),
-                max_characters=args.max_line_characters,
-            )
-            if args.manifest is not None
-            else None
-        )
-        labels = _load_automation_labels(
-            Path(args.labels),
-            max_line_characters=args.max_line_characters,
-            corpus_id=corpus_id,
-        )
-        result = evaluate_automation_scores(
-            _iter_json_objects(
-                Path(args.input),
-                kind="detection",
-                max_line_characters=args.max_line_characters,
-            ),
-            labels,
+        result, _ = _evaluate_files(
+            detections=Path(args.input),
+            labels_path=Path(args.labels),
+            manifest_path=Path(args.manifest) if args.manifest is not None else None,
             threshold=args.threshold,
+            max_line_characters=args.max_line_characters,
         )
     except EvaluationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def _write_json(path: Path, payload: Mapping[str, object]) -> None:
+    with _atomic_output(path) as stream:
+        json.dump(payload, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+
+
+def _run_summary(run: dict[str, object]) -> str:
+    artifacts = run["artifacts"]
+    assert isinstance(artifacts, dict)
+    return (
+        "# ATI local run\n\n"
+        f"- Tool version: `{run['tool_version']}`\n"
+        f"- Corpus ID: `{run['corpus_id']}`\n"
+        f"- Detections: `{artifacts['detections']}`\n"
+        f"- Evaluation: `{artifacts['evaluation']}`\n"
+    )
+
+
+def _run(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run_dir)
+    if os.path.lexists(run_dir):
+        print(f"error: run directory already exists: {run_dir}", file=sys.stderr)
+        return 2
+    try:
+        run_dir.parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{run_dir.name}.", dir=run_dir.parent))
+    except OSError as exc:
+        print(f"error: cannot create run directory: {exc}", file=sys.stderr)
+        return 2
+    try:
+        args.output = str(staging / "detections.jsonl")
+        if _analyze(args) != 0:
+            return 2
+        evaluation, corpus_id = _evaluate_files(
+            detections=Path(args.output),
+            labels_path=Path(args.labels),
+            manifest_path=Path(args.manifest),
+            threshold=args.threshold,
+            max_line_characters=args.max_line_characters,
+        )
+        run = {
+            "schema_version": 1,
+            "tool_version": __version__,
+            "corpus_id": corpus_id,
+            "analysis": {
+                "source": args.source,
+                "verify_identity": args.verify_identity,
+                "verification_mode": args.verification_mode,
+            },
+            "artifacts": {
+                "detections": "detections.jsonl",
+                "evaluation": "evaluation.json",
+                "summary": "summary.md",
+            },
+        }
+        _write_json(staging / "evaluation.json", evaluation)
+        _write_json(staging / "run.json", run)
+        with _atomic_output(staging / "summary.md") as stream:
+            stream.write(_run_summary(run))
+        os.replace(staging, run_dir)
+    except (EvaluationError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    print(json.dumps({"corpus_id": corpus_id, "run_dir": str(run_dir)}, sort_keys=True))
     return 0
 
 
@@ -525,6 +631,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "analyze":
         return _analyze(args)
+    if args.command == "run":
+        return _run(args)
     if args.command == "explain":
         return _explain(args)
     if args.command == "evaluate":
