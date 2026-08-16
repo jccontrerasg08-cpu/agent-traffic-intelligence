@@ -25,6 +25,12 @@ class ValidationStatus(StrEnum):
     STALE = "stale"
 
 
+class SourceAcquisition(StrEnum):
+    """How ATI obtained source bytes for URL-to-key attribution decisions."""
+
+    UNKNOWN = "unknown"
+
+
 def _aware(value: datetime | None, name: str) -> None:
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise ValueError(f"{name} must be timezone-aware")
@@ -105,6 +111,7 @@ class SourceMetadata:
     last_modified: str | None = None
     validation_status: ValidationStatus = ValidationStatus.UNVALIDATED
     key_authority_bindings: tuple[KeyAuthorityBinding, ...] = ()
+    acquisition: SourceAcquisition = SourceAcquisition.UNKNOWN
 
     def __post_init__(self) -> None:
         _aware(self.retrieved_at, "retrieved_at")
@@ -137,6 +144,7 @@ class SourceMetadata:
             "key_authority_bindings": [
                 binding.to_dict() for binding in self.key_authority_bindings
             ],
+            "acquisition": self.acquisition.value,
         }
 
     @classmethod
@@ -187,6 +195,7 @@ class SourceMetadata:
                 str(payload.get("validation_status", "unvalidated"))
             ),
             key_authority_bindings=bindings,
+            acquisition=SourceAcquisition(str(payload.get("acquisition", "unknown"))),
         )
 
 
@@ -223,6 +232,7 @@ class SourceDocument:
         last_modified: str | None = None,
         validation_status: ValidationStatus = ValidationStatus.UNVALIDATED,
         key_authority_bindings: tuple[KeyAuthorityBinding, ...] = (),
+        acquisition: SourceAcquisition = SourceAcquisition.UNKNOWN,
     ) -> SourceDocument:
         digest = hashlib.sha256(content).hexdigest()
         metadata = SourceMetadata(
@@ -240,5 +250,6 @@ class SourceDocument:
             last_modified=last_modified,
             validation_status=validation_status,
             key_authority_bindings=key_authority_bindings,
+            acquisition=acquisition,
         )
         return cls(metadata=metadata, content=bytes(content))
