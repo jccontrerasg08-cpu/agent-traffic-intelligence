@@ -186,6 +186,41 @@ def test_check_pinned_drafts_aggregates_current_results_without_mutation() -> No
     assert all(item.status is DraftHealthStatus.CURRENT for item in report.drafts)
 
 
+@pytest.mark.parametrize(
+    ("states", "error_match"),
+    [
+        (["/api/v1/doc/state/1/", "/api/v1/doc/state/1/"], "duplicates"),
+        ([f"/api/v1/doc/state/{index}/" for index in range(17)], "too many"),
+    ],
+)
+def test_check_pinned_drafts_rejects_duplicate_or_excessive_states(
+    states: list[str],
+    error_match: str,
+) -> None:
+    pin = default_draft_pins()[0]
+    document_url = document_api_url(pin)
+    transport = FakeTransport(
+        {
+            document_url: response(
+                document_url,
+                {
+                    "name": pin.document_name,
+                    "rev": pin.revision,
+                    "states": states,
+                },
+            )
+        }
+    )
+
+    with pytest.raises(DatatrackerPayloadError, match=error_match):
+        check_pinned_drafts(
+            client=DatatrackerJsonClient(transport=transport),
+            pins=(pin,),
+        )
+
+    assert [call[0] for call in transport.calls] == [document_url]
+
+
 def test_check_pinned_drafts_surfaces_review_required_without_rewriting_pins() -> None:
     pins = default_draft_pins()
     first = pins[0]

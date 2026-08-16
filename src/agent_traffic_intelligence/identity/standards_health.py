@@ -38,6 +38,7 @@ _REVIEW_REQUIRED_STATES = frozenset(
     }
 )
 _USER_AGENT = "agent-traffic-intelligence/0.1 standards-health"
+_MAX_STATE_RESOURCES = 16
 
 
 class DatatrackerPayloadError(ValueError):
@@ -351,7 +352,11 @@ def _state_resources(document_payload: Mapping[str, object]) -> tuple[str, ...]:
         raise DatatrackerPayloadError(
             "Datatracker document states must be a list of resource URIs"
         )
+    if len(states) > _MAX_STATE_RESOURCES:
+        raise DatatrackerPayloadError("Datatracker document declares too many states")
     resources = tuple(states)
+    if len(set(resources)) != len(resources):
+        raise DatatrackerPayloadError("Datatracker document states must not contain duplicates")
     for resource_uri in resources:
         state_api_url(resource_uri)
     return resources

@@ -113,6 +113,33 @@ def test_redirect_is_re_resolved_and_private_target_is_rejected() -> None:
     assert len(transport.calls) == 1
 
 
+def test_cross_origin_redirect_does_not_forward_cache_validators() -> None:
+    resolver = FakeResolver(
+        {
+            "source.example": ("93.184.216.34",),
+            "redirect.example": ("8.8.8.8",),
+        }
+    )
+    transport = FakeTransport(
+        [
+            response(302, Location="https://redirect.example/data.json"),
+            response(),
+        ]
+    )
+
+    SafeFetcher(resolver=resolver, transport=transport).fetch(
+        "https://source.example/data.json",
+        etag='"v1"',
+        last_modified="Wed, 12 Aug 2026 12:00:00 GMT",
+    )
+
+    assert transport.calls[0].headers == {
+        "If-None-Match": '"v1"',
+        "If-Modified-Since": "Wed, 12 Aug 2026 12:00:00 GMT",
+    }
+    assert transport.calls[1].headers == {}
+
+
 def test_rejects_more_than_three_redirects() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34",)})
     transport = FakeTransport(
