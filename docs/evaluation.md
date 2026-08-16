@@ -94,3 +94,19 @@ The validator rejects unauthorized corpora, unknown manifest fields, missing lea
 ```bash
 ati evaluate detections.jsonl --labels labels.jsonl --manifest corpus-manifest.json --threshold 0.5
 ```
+
+## Local run artifact
+
+When one authorized corpus needs repeatable analysis and evaluation, use `ati run`. It writes a **new** local directory atomically, so a failed parse or evaluation never leaves a partial result in the requested location.
+
+```bash
+ATI_HASH_KEY="local-secret" ati run access.jsonl \
+  --run-dir runs/owned-shadow-2026-08 \
+  --labels labels.jsonl \
+  --manifest corpus-manifest.json \
+  --threshold 0.5
+```
+
+The directory contains `detections.jsonl`, `evaluation.json`, `run.json`, and `summary.md`. It intentionally does **not** copy the raw access log, labels, or corpus manifest; those remain user-owned local inputs. `run.json` records only the ATI version, approved `corpus_id`, non-sensitive analysis options, and fixed artifact names. ATI refuses to overwrite an existing run directory.
+
+> This is a local reproducibility convention, not a database, dashboard, telemetry service, or model-training workflow.
