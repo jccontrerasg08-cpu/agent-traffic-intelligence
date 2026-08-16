@@ -42,6 +42,7 @@ ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519
 serialization = pytest.importorskip("cryptography.hazmat.primitives.serialization")
 
 JWKS_URI = "https://keys.example/jwks.json?tenant=one"
+CIMD_URI = "https://agent.example/client-metadata.json"
 
 
 @dataclass
@@ -85,10 +86,15 @@ def _public_jwk(resolver: SigningResolver) -> dict[str, object]:
     }
 
 
-def _signed_message(resolver: SigningResolver) -> Message:
+def _signed_message(
+    resolver: SigningResolver,
+    *,
+    signature_agent_uri: str = JWKS_URI,
+    discovery_type: str = "jwks_uri",
+) -> Message:
     message = Message("GET", "https://example.com/docs", {})
     message.headers["Signature-Agent"] = (
-        f'sig1="{JWKS_URI}";type=jwks_uri'
+        f'sig1="{signature_agent_uri}";type={discovery_type}'
     )
     signer = hms.HTTPMessageSigner(
         signature_algorithm=algorithms.ED25519,
@@ -122,6 +128,48 @@ def _context(message: Message) -> VerificationContext:
     )
 
 
+def _event(now: datetime, request_id: str) -> RequestEvent:
+    return RequestEvent(
+        timestamp=now,
+        request_id=request_id,
+        client_id="client-1",
+        method="GET",
+        path="/docs",
+        status=200,
+        bytes_sent=100,
+        http_version="HTTP/2",
+        user_agent="ExampleBot/1.0",
+        source="test",
+    )
+
+
+def _claim() -> IdentityClaim:
+    return IdentityClaim(
+        provider="example",
+        agent="ExampleBot",
+        actor_type=ActorType.AI_CRAWLER,
+        intent="test",
+    )
+
+
+def _manager(
+    cache: SourceCache,
+    source: CryptoSourceProfile,
+    *,
+    allowlisted: frozenset[str],
+) -> ProviderAwareVerificationManager:
+    profile = ProviderProfile(
+        provider="example",
+        range_sources=(),
+        fcrdns=None,
+        crypto=CryptoProfile(signature_agents=(source,), reviewed_on="2026-08-16"),
+    )
+    manager = ProviderAwareVerificationManager(cache)
+    manager._profiles = {"example": profile}
+    manager._trust = SourceTrustPolicy(allowlisted)
+    return manager
+
+
 def test_runtime_verifies_allowlisted_cached_jwks_without_network(tmp_path) -> None:
     now = datetime.now(UTC)
     resolver = SigningResolver()
@@ -133,12 +181,6 @@ def test_runtime_verifies_allowlisted_cached_jwks_without_network(tmp_path) -> N
         binding_scope=BindingScope.AGENT,
         reviewed_on="2026-08-16",
         subject="ExampleBot",
-    )
-    profile = ProviderProfile(
-        provider="example",
-        range_sources=(),
-        fcrdns=None,
-        crypto=CryptoProfile(signature_agents=(source,), reviewed_on="2026-08-16"),
     )
     cache = SourceCache(tmp_path)
     cache.put(
@@ -156,33 +198,67 @@ def test_runtime_verifies_allowlisted_cached_jwks_without_network(tmp_path) -> N
         )
     )
 
-    manager = ProviderAwareVerificationManager(cache)
-    manager._profiles = {"example": profile}
-    manager._trust = SourceTrustPolicy(frozenset({JWKS_URI}))
+    manager = _manager(cache, source, allowlisted=frozenset({JWKS_URI}))
     message = _signed_message(resolver)
-    event = RequestEvent(
-        timestamp=now,
-        request_id="runtime-jwks-1",
-        client_id="client-1",
-        method="GET",
-        path="/docs",
-        status=200,
-        bytes_sent=100,
-        http_version="HTTP/2",
-        user_agent="ExampleBot/1.0",
-        source="test",
-    )
-    claim = IdentityClaim(
-        provider="example",
-        agent="ExampleBot",
-        actor_type=ActorType.AI_CRAWLER,
-        intent="test",
+    resolution = manager.verify(
+        event=_event(now, "runtime-jwks-1"),
+        context=_context(message),
+        claim=_claim(),
     )
 
+    assert resolution.state is VerificationState.VERIFIED
+    assert resolution.agent_verified is True
+    assert len(resolution.methods) == 1
+    assert resolution.methods[0].outcome is VerificationOutcome.PASS
+    assert resolution.methods[0].details["key_source_trusted"] is True
+
+
+def test_runtime_verifies_allowlisted_cached_cimd_inline_jwks_without_network(
+    tmp_path,
+) -> None:
+    now = datetime.now(UTC)
+    resolver = SigningResolver()
+    source = CryptoSourceProfile(
+        signature_agent_uri=CIMD_URI,
+        directory_uri=CIMD_URI,
+        interoperability_profile=CryptoInteroperabilityProfile.IETF_HTTPSIG_PROTOCOL_01,
+        discovery_type=CryptoDiscoveryType.CIMD,
+        binding_scope=BindingScope.AGENT,
+        reviewed_on="2026-08-16",
+        subject="ExampleBot",
+    )
+    cache = SourceCache(tmp_path)
+    card = {
+        "client_id": CIMD_URI,
+        "client_name": "Example Bot",
+        "jwks": {"keys": [_public_jwk(resolver)]},
+        "web_bot_auth": {"expected-user-agent": "ExampleBot/1.0"},
+    }
+    cache.put(
+        SourceDocument.from_bytes(
+            uri=CIMD_URI,
+            source_type=SourceType.AGENT_CARD,
+            provider="example",
+            binding_scope=BindingScope.AGENT,
+            retrieved_at=now - timedelta(minutes=1),
+            expires_at=now + timedelta(hours=1),
+            content=json.dumps(card).encode(),
+            content_type="application/json",
+            parser_profile="draft-meunier-webbotauth-registry-03",
+            acquisition=SourceAcquisition.DIRECT_HTTPS,
+        )
+    )
+
+    manager = _manager(cache, source, allowlisted=frozenset({CIMD_URI}))
+    message = _signed_message(
+        resolver,
+        signature_agent_uri=CIMD_URI,
+        discovery_type="cimd",
+    )
     resolution = manager.verify(
-        event=event,
+        event=_event(now, "runtime-cimd-1"),
         context=_context(message),
-        claim=claim,
+        claim=_claim(),
     )
 
     assert resolution.state is VerificationState.VERIFIED
