@@ -96,6 +96,11 @@ class WebBotAuthVerifier:
         if (directory is None) == (jwk_set is None):
             raise ValueError("exactly one of directory or jwk_set must be provided")
 
+        self._directory: KeyDirectory | None
+        self._jwk_set: JwkSet | None
+        self._keys: tuple[VerificationKey, ...]
+        resolver: JwkKeyResolver | JwkSetKeyResolver
+
         if directory is not None:
             if directory_uri is None or key_set_uri is not None:
                 raise ValueError(
@@ -104,7 +109,7 @@ class WebBotAuthVerifier:
             source_uri = directory_uri
             self._directory = directory
             self._jwk_set = None
-            self._keys: tuple[VerificationKey, ...] = tuple(directory.keys)
+            self._keys = tuple(directory.keys)
             resolver = JwkKeyResolver(directory)
             self._source_profile = _DIRECTORY_SOURCE_PROFILE
         else:
