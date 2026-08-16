@@ -75,6 +75,8 @@ def evaluate_automation_scores(
 
     if not 0.0 <= threshold <= 1.0:
         raise EvaluationError("threshold must be between 0 and 1")
+    if any(not isinstance(request_id, str) or not request_id for request_id in labels):
+        raise EvaluationError("label request_id must be a non-empty string")
     if any(not isinstance(value, bool) for value in labels.values()):
         raise EvaluationError("labels must map request IDs to boolean values")
 

@@ -49,3 +49,8 @@ def test_evaluation_rejects_invalid_threshold(threshold: float) -> None:
 def test_evaluation_rejects_malformed_detection_payload() -> None:
     with pytest.raises(EvaluationError, match="automation_score"):
         evaluate_automation_scores([{"request_id": "a", "automation_score": True}], {"a": True})
+
+
+def test_evaluation_rejects_label_with_empty_request_id() -> None:
+    with pytest.raises(EvaluationError, match="label request_id"):
+        evaluate_automation_scores([], {"": True})
