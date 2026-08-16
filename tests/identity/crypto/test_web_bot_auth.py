@@ -234,6 +234,48 @@ def test_generic_jwk_set_operator_kid_verifies_and_reports_thumbprint() -> None:
     assert "directory" not in evidence.source_profile.casefold()
 
 
+def test_generic_jwk_set_key_is_inactive_at_exact_expiration() -> None:
+    expired_at_now = parse_jwk_set(
+        {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": "JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs",
+                    "kid": "operator-key",
+                    "use": "sig",
+                    "nbf": int(NOW.timestamp()) - 60,
+                    "exp": int(NOW.timestamp()),
+                }
+            ]
+        }
+    )
+    result = good_result(
+        nonce=None,
+        identity_uri=GENERIC_JWKS_URI,
+        key_id="operator-key",
+    )
+    instance = WebBotAuthVerifier(
+        jwk_set=expired_at_now,
+        key_set_uri=GENERIC_JWKS_URI,
+        signature_agent_uri=GENERIC_JWKS_URI,
+        binding_scope=BindingScope.AGENT,
+        subject="ExampleBot",
+        trust_policy=SourceTrustPolicy(frozenset({GENERIC_JWKS_URI})),
+        rfc_verifier=FakeRfcVerifier(result),
+        signature_agent_parser=FakeSignatureAgentParser(GENERIC_JWKS_URI),
+    )
+
+    evidence = instance.verify(
+        context=context(f'sig1="{GENERIC_JWKS_URI}"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.MISMATCH
+    assert "not active" in evidence.explanation
+
+
 def test_generic_jwk_set_thumbprint_fallback_verifies() -> None:
     key = generic_jwk_set().keys[0]
     result = good_result(

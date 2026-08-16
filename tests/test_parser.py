@@ -58,10 +58,11 @@ def test_normalizer_accepts_prehashed_client_id_without_key() -> None:
 
 
 def test_iter_jsonl_reports_line_number_for_malformed_json() -> None:
-    stream = StringIO('{"client_id":"ok"}\nnot-json\n')
+    stream = StringIO(f"{json.dumps(base_record())}\nnot-json\n")
 
-    iterator = iter_jsonl(stream, hash_key=None)
-    with pytest.raises(ParseError, match="line 1"):
+    iterator = iter_jsonl(stream, hash_key=b"key")
+    next(iterator)
+    with pytest.raises(ParseError, match="line 2"):
         next(iterator)
 
 
