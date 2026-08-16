@@ -175,6 +175,7 @@ def test_valid_chain_binds_exact_agent_and_replay() -> None:
     second = instance.verify(context=context(), claim=claim(), now=NOW)
     assert first.outcome is VerificationOutcome.PASS
     assert first.binding_scope is BindingScope.AGENT
+    assert first.details["key_thumbprint"] == directory().keys[0].key_id
     assert first.details["replay_protected"] is True
     assert second.outcome is VerificationOutcome.MISMATCH
 
