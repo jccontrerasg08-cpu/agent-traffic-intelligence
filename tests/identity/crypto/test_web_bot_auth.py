@@ -7,6 +7,7 @@ import pytest
 
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
+from agent_traffic_intelligence.identity.crypto.jwk_set import parse_jwk_set
 from agent_traffic_intelligence.identity.crypto.replay import ReplayCache
 from agent_traffic_intelligence.identity.crypto.rfc9421 import Rfc9421Result
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
@@ -27,6 +28,7 @@ from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROF
 from agent_traffic_intelligence.models import ActorType, IdentityClaim
 
 DIRECTORY_URI = "https://agent.example/.well-known/http-message-signatures-directory"
+GENERIC_JWKS_URI = "https://keys.example/jwks.json"
 NOW = datetime(2026, 8, 14, 11, 0, tzinfo=UTC)
 
 
@@ -81,6 +83,24 @@ def directory():
     )
 
 
+def generic_jwk_set():
+    return parse_jwk_set(
+        {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": "JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs",
+                    "kid": "operator-key",
+                    "use": "sig",
+                    "nbf": int(NOW.timestamp()) - 60,
+                    "exp": int(NOW.timestamp()) + 7200,
+                }
+            ]
+        }
+    )
+
+
 def claim(provider: str = "example", agent: str = "ExampleBot") -> IdentityClaim:
     return IdentityClaim(
         provider=provider,
@@ -110,8 +130,9 @@ def good_result(
     *,
     nonce: str | None = "nonce-1",
     identity_uri: str = DIRECTORY_URI,
+    key_id: str | None = None,
 ) -> Rfc9421Result:
-    key_id = directory().keys[0].key_id
+    effective_key_id = key_id or directory().keys[0].key_id
     return Rfc9421Result(
         outcome=VerificationOutcome.PASS,
         explanation="verified",
@@ -125,7 +146,7 @@ def good_result(
         parameters={
             "created": int(NOW.timestamp()) - 10,
             "expires": int(NOW.timestamp()) + 300,
-            "keyid": key_id,
+            "keyid": effective_key_id,
             "tag": "web-bot-auth",
         },
         nonce=nonce,
@@ -149,6 +170,19 @@ def verifier(
         rfc_verifier=FakeRfcVerifier(result),
         signature_agent_parser=FakeSignatureAgentParser(parser_uri or identity_uri),
         replay_cache=replay,
+    )
+
+
+def generic_verifier(result: Rfc9421Result) -> WebBotAuthVerifier:
+    return WebBotAuthVerifier(
+        jwk_set=generic_jwk_set(),
+        key_set_uri=GENERIC_JWKS_URI,
+        signature_agent_uri=GENERIC_JWKS_URI,
+        binding_scope=BindingScope.AGENT,
+        subject="ExampleBot",
+        trust_policy=SourceTrustPolicy(frozenset({GENERIC_JWKS_URI})),
+        rfc_verifier=FakeRfcVerifier(result),
+        signature_agent_parser=FakeSignatureAgentParser(GENERIC_JWKS_URI),
     )
 
 
@@ -178,6 +212,44 @@ def test_valid_chain_binds_exact_agent_and_replay() -> None:
     assert first.details["key_thumbprint"] == directory().keys[0].key_id
     assert first.details["replay_protected"] is True
     assert second.outcome is VerificationOutcome.MISMATCH
+
+
+def test_generic_jwk_set_operator_kid_verifies_and_reports_thumbprint() -> None:
+    key = generic_jwk_set().keys[0]
+    result = good_result(
+        nonce=None,
+        identity_uri=GENERIC_JWKS_URI,
+        key_id="operator-key",
+    )
+
+    evidence = generic_verifier(result).verify(
+        context=context(f'sig1="{GENERIC_JWKS_URI}"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.details["key_thumbprint"] == key.thumbprint
+    assert evidence.source_uri == GENERIC_JWKS_URI
+    assert "directory" not in evidence.source_profile.casefold()
+
+
+def test_generic_jwk_set_thumbprint_fallback_verifies() -> None:
+    key = generic_jwk_set().keys[0]
+    result = good_result(
+        nonce=None,
+        identity_uri=GENERIC_JWKS_URI,
+        key_id=key.thumbprint,
+    )
+
+    evidence = generic_verifier(result).verify(
+        context=context(f'sig1="{GENERIC_JWKS_URI}"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.details["key_thumbprint"] == key.thumbprint
 
 
 def test_evidence_reports_current_protocol_profile() -> None:
