@@ -107,6 +107,12 @@ def _parser() -> argparse.ArgumentParser:
         default=0.5,
         help="Automation decision threshold from 0 to 1 (default: 0.5).",
     )
+    evaluate.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
 
     registry = subparsers.add_parser("registry", help="Inspect the curated agent registry.")
     registry_sub = registry.add_subparsers(dest="registry_command", required=True)
@@ -265,10 +271,20 @@ def _json_line(payload: dict[str, object]) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
 
 
-def _iter_json_objects(path: Path, *, kind: str) -> Iterator[dict[str, object]]:
+def _iter_json_objects(
+    path: Path,
+    *,
+    kind: str,
+    max_line_characters: int,
+) -> Iterator[dict[str, object]]:
     try:
         with path.open("r", encoding="utf-8") as stream:
             for line_number, line in enumerate(stream, start=1):
+                if len(line) > max_line_characters:
+                    raise EvaluationError(
+                        f"{kind} JSONL line {line_number} exceeds character limit "
+                        f"of {max_line_characters}"
+                    )
                 if not line.strip():
                     continue
                 try:
@@ -286,9 +302,17 @@ def _iter_json_objects(path: Path, *, kind: str) -> Iterator[dict[str, object]]:
         raise EvaluationError(f"cannot read {kind} JSONL: {exc}") from exc
 
 
-def _load_automation_labels(path: Path) -> dict[str, bool]:
+def _load_automation_labels(
+    path: Path,
+    *,
+    max_line_characters: int,
+) -> dict[str, bool]:
     labels: dict[str, bool] = {}
-    for payload in _iter_json_objects(path, kind="label"):
+    for payload in _iter_json_objects(
+        path,
+        kind="label",
+        max_line_characters=max_line_characters,
+    ):
         request_id = payload.get("request_id")
         automated = payload.get("automated")
         if not isinstance(request_id, str) or not request_id:
@@ -303,9 +327,16 @@ def _load_automation_labels(path: Path) -> dict[str, bool]:
 
 def _evaluate(args: argparse.Namespace) -> int:
     try:
-        labels = _load_automation_labels(Path(args.labels))
+        labels = _load_automation_labels(
+            Path(args.labels),
+            max_line_characters=args.max_line_characters,
+        )
         result = evaluate_automation_scores(
-            _iter_json_objects(Path(args.input), kind="detection"),
+            _iter_json_objects(
+                Path(args.input),
+                kind="detection",
+                max_line_characters=args.max_line_characters,
+            ),
             labels,
             threshold=args.threshold,
         )
