@@ -28,6 +28,12 @@ REFERENCE = SignatureAgentReference(
     discovery_type=SignatureAgentDiscoveryType.DIRECTORY,
 )
 TARGET = plan_signature_agent_resolution(REFERENCE)
+JWKS_REFERENCE = SignatureAgentReference(
+    label="sig1",
+    uri="https://keys.example/jwks.json?tenant=one",
+    discovery_type=SignatureAgentDiscoveryType.JWKS_URI,
+)
+JWKS_TARGET = plan_signature_agent_resolution(JWKS_REFERENCE)
 JWK = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -35,6 +41,10 @@ JWK = {
     "use": "sig",
 }
 BODY = json.dumps({"keys": [JWK]}, separators=(",", ":"), sort_keys=True).encode()
+GENERIC_JWK = {**JWK, "kid": "operator-label"}
+JWKS_BODY = json.dumps(
+    {"keys": [GENERIC_JWK]}, separators=(",", ":"), sort_keys=True
+).encode()
 
 
 def _module():
@@ -64,6 +74,25 @@ def cached_document(
         content=BODY,
         content_type="application/http-message-signatures-directory+json",
         parser_profile="draft-meunier-webbotauth-httpsig-directory-00",
+        acquisition=SourceAcquisition.DIRECT_HTTPS,
+    )
+
+
+def cached_jwk_set(
+    *,
+    source_type: SourceType = SourceType.JWK_SET,
+    expires_at: datetime | None = None,
+) -> SourceDocument:
+    return SourceDocument.from_bytes(
+        uri=JWKS_TARGET.fetch_uri,
+        source_type=source_type,
+        provider="example",
+        binding_scope=BindingScope.AGENT,
+        retrieved_at=NOW - timedelta(minutes=5),
+        expires_at=expires_at,
+        content=JWKS_BODY,
+        content_type="application/json",
+        parser_profile="rfc7517",
         acquisition=SourceAcquisition.DIRECT_HTTPS,
     )
 
@@ -132,5 +161,38 @@ def test_directory_stale_cache_is_not_used(tmp_path) -> None:
             REFERENCE,
             cache=cache,
             trust_policy=policy(TARGET.fetch_uri),
+            now=NOW,
+        )
+
+
+def test_jwks_uri_resolves_generic_cached_jwk_set_with_operator_kid(tmp_path) -> None:
+    module = _module()
+    cache = SourceCache(tmp_path)
+    cache.put(cached_jwk_set(expires_at=NOW + timedelta(hours=1)))
+
+    resolved = module.resolve_cached_signature_agent(
+        JWKS_REFERENCE,
+        cache=cache,
+        trust_policy=policy(JWKS_TARGET.fetch_uri),
+        now=NOW,
+    )
+
+    assert resolved.identifier_uri == JWKS_TARGET.identifier_uri
+    assert resolved.discovery_type is SignatureAgentDiscoveryType.JWKS_URI
+    assert len(resolved.jwk_set.keys) == 1
+    assert resolved.jwk_set.keys[0].kid == "operator-label"
+    assert resolved.documents == (cache.get(JWKS_TARGET.fetch_uri),)
+
+
+def test_jwks_uri_rejects_strict_directory_source_type(tmp_path) -> None:
+    module = _module()
+    cache = SourceCache(tmp_path)
+    cache.put(cached_jwk_set(source_type=SourceType.KEY_DIRECTORY))
+
+    with pytest.raises(module.CachedDiscoveryError):
+        module.resolve_cached_signature_agent(
+            JWKS_REFERENCE,
+            cache=cache,
+            trust_policy=policy(JWKS_TARGET.fetch_uri),
             now=NOW,
         )
