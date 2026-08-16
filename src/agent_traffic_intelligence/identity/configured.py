@@ -45,6 +45,7 @@ from agent_traffic_intelligence.identity.network.verifier import OfficialRangeVe
 from agent_traffic_intelligence.identity.policy import VerificationMode, VerificationPolicy
 from agent_traffic_intelligence.identity.profiles import (
     CryptoDiscoveryType,
+    CryptoResponseBindingPolicy,
     CryptoSourceProfile,
     FcrdnsProfile,
     ProviderProfile,
@@ -139,7 +140,9 @@ def apply_cached_crypto_binding(
     if evidence.binding_scope is BindingScope.KEY:
         return evidence
     if (
-        document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS
+        profile.response_binding_policy
+        is CryptoResponseBindingPolicy.DEPLOYED_COMPATIBLE
+        and document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS
         and document.metadata.retrieved_at <= now
     ):
         return evidence
