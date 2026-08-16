@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from agent_traffic_intelligence.identity.crypto.agent_card import (
+    AgentCardFormatError,
+    parse_agent_card,
+)
 from agent_traffic_intelligence.identity.crypto.directory import (
     DirectoryFormatError,
     parse_key_directory,
@@ -23,7 +27,10 @@ from agent_traffic_intelligence.identity.crypto.signature_agent import (
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.models import SourceDocument, SourceType
-from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
+from agent_traffic_intelligence.identity.sources.trust import (
+    SourceTrustPolicy,
+    canonicalize_source_uri,
+)
 
 
 class CachedDiscoveryUnavailable(LookupError):
@@ -128,6 +135,59 @@ def _resolve_jwks_uri(
     )
 
 
+def _resolve_cimd(
+    reference: SignatureAgentReference,
+    *,
+    cache: SourceCache,
+    trust_policy: SourceTrustPolicy,
+    now: datetime,
+) -> ResolvedSignatureAgentMaterial:
+    target = plan_signature_agent_resolution(reference)
+    card_document = _require_cached_document(
+        target.fetch_uri,
+        expected_type=SourceType.AGENT_CARD,
+        cache=cache,
+        trust_policy=trust_policy,
+        now=now,
+    )
+    try:
+        card = parse_agent_card(card_document.content, retrieved_from=target.fetch_uri)
+    except (AgentCardFormatError, JwkSetFormatError) as exc:
+        raise CachedDiscoveryError("cached Signature-Agent CIMD card is malformed") from exc
+
+    if card.inline_jwks is not None:
+        return ResolvedSignatureAgentMaterial(
+            identifier_uri=target.identifier_uri,
+            discovery_type=SignatureAgentDiscoveryType.CIMD,
+            jwk_set=card.inline_jwks,
+            documents=(card_document,),
+        )
+
+    if card.jwks_uri is None:
+        raise CachedDiscoveryUnavailable("cached CIMD card does not provide key material")
+    try:
+        jwks_uri = canonicalize_source_uri(card.jwks_uri)
+    except ValueError as exc:
+        raise CachedDiscoveryError("cached CIMD jwks_uri is not acceptable HTTPS") from exc
+    jwks_document = _require_cached_document(
+        jwks_uri,
+        expected_type=SourceType.JWK_SET,
+        cache=cache,
+        trust_policy=trust_policy,
+        now=now,
+    )
+    try:
+        jwk_set = parse_jwk_set(jwks_document.content)
+    except JwkSetFormatError as exc:
+        raise CachedDiscoveryError("cached CIMD JWK Set is malformed") from exc
+    return ResolvedSignatureAgentMaterial(
+        identifier_uri=target.identifier_uri,
+        discovery_type=SignatureAgentDiscoveryType.CIMD,
+        jwk_set=jwk_set,
+        documents=(card_document, jwks_document),
+    )
+
+
 def resolve_cached_signature_agent(
     reference: SignatureAgentReference,
     *,
@@ -146,6 +206,13 @@ def resolve_cached_signature_agent(
         )
     if reference.discovery_type is SignatureAgentDiscoveryType.JWKS_URI:
         return _resolve_jwks_uri(
+            reference,
+            cache=cache,
+            trust_policy=trust_policy,
+            now=now,
+        )
+    if reference.discovery_type is SignatureAgentDiscoveryType.CIMD:
+        return _resolve_cimd(
             reference,
             cache=cache,
             trust_policy=trust_policy,
