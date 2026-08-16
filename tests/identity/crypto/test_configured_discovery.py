@@ -12,6 +12,7 @@ from agent_traffic_intelligence.identity.crypto.signature_agent import (
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.profiles import (
     CryptoDiscoveryType,
+    CryptoResponseBindingPolicy,
     CryptoSourceProfile,
     provider_profile,
 )
@@ -78,6 +79,7 @@ def test_configured_jwks_uri_resolves_only_allowlisted_cached_material(tmp_path)
         directory_uri=uri,
         interoperability_profile=provider_profile("google").crypto.signature_agents[0].interoperability_profile,  # type: ignore[union-attr]
         discovery_type=CryptoDiscoveryType.JWKS_URI,
+        response_binding_policy=CryptoResponseBindingPolicy.DEPLOYED_COMPATIBLE,
         binding_scope=BindingScope.AGENT,
         reviewed_on="2026-08-16",
         subject="ExampleBot",
