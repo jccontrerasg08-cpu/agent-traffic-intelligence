@@ -8,8 +8,17 @@ from datetime import datetime
 from typing import Protocol
 
 from agent_traffic_intelligence.identity.context import VerificationContext
-from agent_traffic_intelligence.identity.crypto.directory import KeyDirectory
-from agent_traffic_intelligence.identity.crypto.key_resolver import JwkKeyResolver
+from agent_traffic_intelligence.identity.crypto.directory import DirectoryKey, KeyDirectory
+from agent_traffic_intelligence.identity.crypto.jwk_set import (
+    JwkSet,
+    JwkSetKey,
+    JwkSetKeySelectionError,
+    select_jwk_set_key,
+)
+from agent_traffic_intelligence.identity.crypto.key_resolver import (
+    JwkKeyResolver,
+    JwkSetKeyResolver,
+)
 from agent_traffic_intelligence.identity.crypto.replay import ReplayCache
 from agent_traffic_intelligence.identity.crypto.rfc9421 import (
     Rfc9421Result,
@@ -39,10 +48,14 @@ _WEB_BOT_AUTH_TAG = "web-bot-auth"
 _MAX_VALIDITY_SECONDS = 24 * 60 * 60
 _CLOCK_SKEW_SECONDS = 5
 _KEY_PARAM_RE = re.compile(r';key="([^"\\]+)"')
-_SOURCE_PROFILE = (
+_DIRECTORY_SOURCE_PROFILE = (
     f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+"
     f"{DEFAULT_STANDARDS_PROFILE.message_signatures_directory}"
 )
+_GENERIC_JWKS_SOURCE_PROFILE = (
+    f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+RFC7517"
+)
+VerificationKey = DirectoryKey | JwkSetKey
 
 
 class RfcVerifier(Protocol):
@@ -67,8 +80,10 @@ class WebBotAuthVerifier:
     def __init__(
         self,
         *,
-        directory: KeyDirectory,
-        directory_uri: str,
+        directory: KeyDirectory | None = None,
+        directory_uri: str | None = None,
+        jwk_set: JwkSet | None = None,
+        key_set_uri: str | None = None,
         binding_scope: BindingScope,
         signature_agent_uri: str | None = None,
         trust_policy: SourceTrustPolicy,
@@ -78,15 +93,40 @@ class WebBotAuthVerifier:
         replay_cache: ReplayCache | None = None,
         policy: WebBotAuthPolicy | None = None,
     ) -> None:
-        self._directory = directory
-        self._directory_uri = canonicalize_source_uri(directory_uri)
+        if (directory is None) == (jwk_set is None):
+            raise ValueError("exactly one of directory or jwk_set must be provided")
+
+        if directory is not None:
+            if directory_uri is None or key_set_uri is not None:
+                raise ValueError(
+                    "directory verification requires directory_uri and no key_set_uri"
+                )
+            source_uri = directory_uri
+            self._directory = directory
+            self._jwk_set = None
+            self._keys: tuple[VerificationKey, ...] = tuple(directory.keys)
+            resolver = JwkKeyResolver(directory)
+            self._source_profile = _DIRECTORY_SOURCE_PROFILE
+        else:
+            if jwk_set is None or key_set_uri is None or directory_uri is not None:
+                raise ValueError(
+                    "generic JWK verification requires jwk_set/key_set_uri and no directory_uri"
+                )
+            source_uri = key_set_uri
+            self._directory = None
+            self._jwk_set = jwk_set
+            self._keys = tuple(jwk_set.keys)
+            resolver = JwkSetKeyResolver(jwk_set)
+            self._source_profile = _GENERIC_JWKS_SOURCE_PROFILE
+
+        self._key_source_uri = canonicalize_source_uri(source_uri)
         self._signature_agent_uri = canonicalize_source_uri(
-            signature_agent_uri or directory_uri
+            signature_agent_uri or source_uri
         )
         self._binding_scope = binding_scope
         self._subject = subject
         self._trust_policy = trust_policy
-        self._rfc = rfc_verifier or Rfc9421Verifier(JwkKeyResolver(directory))
+        self._rfc = rfc_verifier or Rfc9421Verifier(resolver)
         self._signature_agent_parser = (
             signature_agent_parser or StructuredFieldSignatureAgentParser()
         )
@@ -102,12 +142,12 @@ class WebBotAuthVerifier:
     ) -> VerificationEvidence:
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("Web Bot Auth verification time must be timezone-aware")
-        if not self._trust_policy.allows(self._directory_uri):
+        if not self._trust_policy.allows(self._key_source_uri):
             return self._evidence(
                 claim,
                 VerificationOutcome.UNAVAILABLE,
-                "key directory is not trusted",
-                {"directory_trusted": False},
+                "key source is not trusted",
+                {"directory_trusted": False, "key_source_trusted": False},
             )
 
         references: tuple[SignatureAgentReference, ...] = ()
@@ -119,14 +159,14 @@ class WebBotAuthVerifier:
                     claim,
                     VerificationOutcome.UNAVAILABLE,
                     "Structured Fields support is unavailable",
-                    {"directory_trusted": True},
+                    {"directory_trusted": True, "key_source_trusted": True},
                 )
             except SignatureAgentFormatError as exc:
                 return self._evidence(
                     claim,
                     VerificationOutcome.MISMATCH,
                     f"Signature-Agent parse failed: {exc}",
-                    {"directory_trusted": True},
+                    {"directory_trusted": True, "key_source_trusted": True},
                 )
 
         result = self._verify_rfc(context)
@@ -135,7 +175,7 @@ class WebBotAuthVerifier:
                 claim,
                 result.outcome,
                 result.explanation,
-                {"directory_trusted": True},
+                {"directory_trusted": True, "key_source_trusted": True},
             )
 
         params = result.parameters or {}
@@ -167,18 +207,18 @@ class WebBotAuthVerifier:
             )
 
         try:
-            key = self._directory.by_id(key_id)
-        except KeyError:
+            key = self._select_key(key_id)
+        except (KeyError, JwkSetKeySelectionError):
             return self._evidence(
                 claim,
                 VerificationOutcome.UNAVAILABLE,
-                "keyid is absent from trusted directory",
-                {"directory_trusted": True},
+                "keyid cannot be resolved from trusted key material",
+                {"directory_trusted": True, "key_source_trusted": True},
             )
-        if not key.active_at(now):
+        if not self._key_active_at(key, now):
             return self._mismatch(
                 claim,
-                "directory key is not active at verification time",
+                "key is not active at verification time",
             )
         if not self._algorithm_matches_key(
             result.algorithm_id,
@@ -188,7 +228,7 @@ class WebBotAuthVerifier:
         ):
             return self._mismatch(
                 claim,
-                "signature algorithm is incompatible with directory key",
+                "signature algorithm is incompatible with key material",
             )
 
         signature_agent_bound = False
@@ -230,12 +270,13 @@ class WebBotAuthVerifier:
         return self._evidence(
             claim,
             VerificationOutcome.PASS,
-            "Web Bot Auth signature and trusted directory binding verified",
+            "Web Bot Auth signature and trusted key binding verified",
             {
                 "algorithm": result.algorithm_id,
                 "directory_trusted": True,
+                "key_source_trusted": True,
                 "key_active": True,
-                "key_thumbprint": key.key_id,
+                "key_thumbprint": self._key_thumbprint(key),
                 "signed_authority_or_target": True,
                 "signature_agent_present": bool(references),
                 "signature_agent_bound": signature_agent_bound,
@@ -244,6 +285,30 @@ class WebBotAuthVerifier:
                 "replay_protected": replay_protected,
             },
         )
+
+    def _select_key(self, key_id: str) -> VerificationKey:
+        if self._directory is not None:
+            return self._directory.by_id(key_id)
+        if self._jwk_set is None:
+            raise KeyError(key_id)
+        return select_jwk_set_key(self._jwk_set, key_id)
+
+    @staticmethod
+    def _key_active_at(key: VerificationKey, now: datetime) -> bool:
+        if isinstance(key, DirectoryKey):
+            return key.active_at(now)
+        timestamp = int(now.timestamp())
+        if key.not_before is not None and timestamp < key.not_before:
+            return False
+        if key.expires is not None and timestamp > key.expires:
+            return False
+        return True
+
+    @staticmethod
+    def _key_thumbprint(key: VerificationKey) -> str:
+        if isinstance(key, DirectoryKey):
+            return key.key_id
+        return key.thumbprint
 
     def _verify_rfc(self, context: VerificationContext) -> Rfc9421Result:
         results: list[Rfc9421Result] = []
@@ -274,7 +339,7 @@ class WebBotAuthVerifier:
 
     def _candidate_algorithms(self) -> tuple[str, ...]:
         algorithms: list[str] = []
-        for key in self._directory.keys:
+        for key in self._keys:
             crv = key.jwk.get("crv")
             candidates: tuple[str, ...]
             if key.kty == "OKP" and crv == "Ed25519":
@@ -354,7 +419,7 @@ class WebBotAuthVerifier:
             claim,
             VerificationOutcome.MISMATCH,
             explanation,
-            {"directory_trusted": True},
+            {"directory_trusted": True, "key_source_trusted": True},
         )
 
     def _evidence(
@@ -378,8 +443,8 @@ class WebBotAuthVerifier:
             authority=claim.provider,
             subject=subject,
             explanation=explanation,
-            source_uri=self._directory_uri,
-            source_profile=_SOURCE_PROFILE,
+            source_uri=self._key_source_uri,
+            source_profile=self._source_profile,
             retrieved_at=None,
             expires_at=None,
             source_sha256=None,
