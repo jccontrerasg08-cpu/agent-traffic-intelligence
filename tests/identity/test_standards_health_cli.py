@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from agent_traffic_intelligence import cli
 from agent_traffic_intelligence.identity.standards_health import (
     DraftHealth,
