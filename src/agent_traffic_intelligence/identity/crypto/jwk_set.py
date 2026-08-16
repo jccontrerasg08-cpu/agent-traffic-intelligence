@@ -18,6 +18,10 @@ class JwkSetFormatError(ValueError):
     """Raised when a generic public JWK Set cannot be safely interpreted."""
 
 
+class JwkSetKeySelectionError(LookupError):
+    """Raised when a signature key cannot be selected unambiguously."""
+
+
 @dataclass(frozen=True, slots=True)
 class JwkSetKey:
     """Public JWK metadata with operator key ID and computed identity separated."""
@@ -120,3 +124,25 @@ def parse_jwk_set(payload: bytes | str | Mapping[str, Any]) -> JwkSet:
     if len(thumbprints) != len(set(thumbprints)):
         raise JwkSetFormatError("JWK Set contains duplicate public keys")
     return JwkSet(keys=keys)
+
+
+def select_jwk_set_key(jwk_set: JwkSet, key_id: str) -> JwkSetKey:
+    """Select one JWK by operator ``kid`` first, then computed thumbprint."""
+
+    if not isinstance(key_id, str) or not key_id:
+        raise JwkSetKeySelectionError("keyid must be a non-empty string")
+
+    kid_matches = tuple(key for key in jwk_set.keys if key.kid == key_id)
+    if len(kid_matches) == 1:
+        return kid_matches[0]
+    if len(kid_matches) > 1:
+        raise JwkSetKeySelectionError("ambiguous JWK kid match")
+
+    thumbprint_matches = tuple(
+        key for key in jwk_set.keys if key.thumbprint == key_id
+    )
+    if len(thumbprint_matches) == 1:
+        return thumbprint_matches[0]
+    if len(thumbprint_matches) > 1:
+        raise JwkSetKeySelectionError("ambiguous JWK thumbprint match")
+    raise JwkSetKeySelectionError("keyid does not match any JWK")
