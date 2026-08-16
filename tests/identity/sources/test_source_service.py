@@ -224,6 +224,7 @@ def test_fetch_result_converts_to_cacheable_source_document() -> None:
     assert document.metadata.source_created_at == SOURCE_CREATED_AT
     assert document.metadata.expires_at is not None
     assert document.metadata.expires_at - document.metadata.retrieved_at == timedelta(hours=1)
+    assert document.metadata.acquisition.value == "direct_https"
     assert document.content == result.body
 
 
