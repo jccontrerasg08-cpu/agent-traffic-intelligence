@@ -6,7 +6,7 @@ This project is pre-alpha. Security fixes are applied to the default branch unti
 
 ## Reporting a vulnerability
 
-Use GitHub Private Vulnerability Reporting when enabled. Do not open public issues containing exploit details, credentials, secrets, production traffic, raw packet captures or personal data. If private reporting is unavailable, contact the maintainer privately before sharing sensitive reproduction material.
+Use [GitHub Private Vulnerability Reporting](https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence/security/advisories/new) for reports. Do not open public issues containing exploit details, credentials, secrets, production traffic, raw packet captures or personal data. If private reporting is unavailable, contact the maintainer privately before sharing sensitive reproduction material.
 
 ## Public reproduction data
 
