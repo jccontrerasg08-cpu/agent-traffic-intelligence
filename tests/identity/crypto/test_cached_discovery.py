@@ -34,6 +34,13 @@ JWKS_REFERENCE = SignatureAgentReference(
     discovery_type=SignatureAgentDiscoveryType.JWKS_URI,
 )
 JWKS_TARGET = plan_signature_agent_resolution(JWKS_REFERENCE)
+CIMD_REFERENCE = SignatureAgentReference(
+    label="sig1",
+    uri="https://agent.example/card?profile=one",
+    discovery_type=SignatureAgentDiscoveryType.CIMD,
+)
+CIMD_TARGET = plan_signature_agent_resolution(CIMD_REFERENCE)
+CIMD_JWKS_URI = "https://keys.example/card-jwks.json"
 JWK = {
     "kty": "OKP",
     "crv": "Ed25519",
@@ -44,6 +51,22 @@ BODY = json.dumps({"keys": [JWK]}, separators=(",", ":"), sort_keys=True).encode
 GENERIC_JWK = {**JWK, "kid": "operator-label"}
 JWKS_BODY = json.dumps(
     {"keys": [GENERIC_JWK]}, separators=(",", ":"), sort_keys=True
+).encode()
+CIMD_INLINE_BODY = json.dumps(
+    {
+        "client_id": CIMD_TARGET.fetch_uri,
+        "jwks": {"keys": [GENERIC_JWK]},
+    },
+    separators=(",", ":"),
+    sort_keys=True,
+).encode()
+CIMD_REMOTE_BODY = json.dumps(
+    {
+        "client_id": CIMD_TARGET.fetch_uri,
+        "jwks_uri": CIMD_JWKS_URI,
+    },
+    separators=(",", ":"),
+    sort_keys=True,
 ).encode()
 
 
@@ -80,11 +103,12 @@ def cached_document(
 
 def cached_jwk_set(
     *,
+    uri: str = JWKS_TARGET.fetch_uri,
     source_type: SourceType = SourceType.JWK_SET,
     expires_at: datetime | None = None,
 ) -> SourceDocument:
     return SourceDocument.from_bytes(
-        uri=JWKS_TARGET.fetch_uri,
+        uri=uri,
         source_type=source_type,
         provider="example",
         binding_scope=BindingScope.AGENT,
@@ -93,6 +117,25 @@ def cached_jwk_set(
         content=JWKS_BODY,
         content_type="application/json",
         parser_profile="rfc7517",
+        acquisition=SourceAcquisition.DIRECT_HTTPS,
+    )
+
+
+def cached_cimd(
+    content: bytes,
+    *,
+    expires_at: datetime | None = None,
+) -> SourceDocument:
+    return SourceDocument.from_bytes(
+        uri=CIMD_TARGET.fetch_uri,
+        source_type=SourceType.AGENT_CARD,
+        provider="example",
+        binding_scope=BindingScope.AGENT,
+        retrieved_at=NOW - timedelta(minutes=5),
+        expires_at=expires_at,
+        content=content,
+        content_type="application/json",
+        parser_profile="draft-meunier-webbotauth-registry-03",
         acquisition=SourceAcquisition.DIRECT_HTTPS,
     )
 
@@ -194,5 +237,65 @@ def test_jwks_uri_rejects_strict_directory_source_type(tmp_path) -> None:
             JWKS_REFERENCE,
             cache=cache,
             trust_policy=policy(JWKS_TARGET.fetch_uri),
+            now=NOW,
+        )
+
+
+def test_cimd_resolves_inline_jwks_without_changing_client_identifier(tmp_path) -> None:
+    module = _module()
+    cache = SourceCache(tmp_path)
+    cache.put(cached_cimd(CIMD_INLINE_BODY, expires_at=NOW + timedelta(hours=1)))
+
+    resolved = module.resolve_cached_signature_agent(
+        CIMD_REFERENCE,
+        cache=cache,
+        trust_policy=policy(CIMD_TARGET.fetch_uri),
+        now=NOW,
+    )
+
+    assert resolved.identifier_uri == CIMD_TARGET.identifier_uri
+    assert resolved.discovery_type is SignatureAgentDiscoveryType.CIMD
+    assert resolved.jwk_set.keys[0].kid == "operator-label"
+    assert resolved.documents == (cache.get(CIMD_TARGET.fetch_uri),)
+
+
+def test_cimd_resolves_allowlisted_secondary_jwks_uri(tmp_path) -> None:
+    module = _module()
+    cache = SourceCache(tmp_path)
+    cache.put(cached_cimd(CIMD_REMOTE_BODY, expires_at=NOW + timedelta(hours=1)))
+    cache.put(
+        cached_jwk_set(
+            uri=CIMD_JWKS_URI,
+            expires_at=NOW + timedelta(hours=1),
+        )
+    )
+
+    resolved = module.resolve_cached_signature_agent(
+        CIMD_REFERENCE,
+        cache=cache,
+        trust_policy=policy(CIMD_TARGET.fetch_uri, CIMD_JWKS_URI),
+        now=NOW,
+    )
+
+    assert resolved.identifier_uri == CIMD_TARGET.identifier_uri
+    assert resolved.discovery_type is SignatureAgentDiscoveryType.CIMD
+    assert resolved.jwk_set.keys[0].kid == "operator-label"
+    assert resolved.documents == (
+        cache.get(CIMD_TARGET.fetch_uri),
+        cache.get(CIMD_JWKS_URI),
+    )
+
+
+def test_cimd_secondary_jwks_uri_must_be_allowlisted(tmp_path) -> None:
+    module = _module()
+    cache = SourceCache(tmp_path)
+    cache.put(cached_cimd(CIMD_REMOTE_BODY))
+    cache.put(cached_jwk_set(uri=CIMD_JWKS_URI))
+
+    with pytest.raises(module.CachedDiscoveryUnavailable):
+        module.resolve_cached_signature_agent(
+            CIMD_REFERENCE,
+            cache=cache,
+            trust_policy=policy(CIMD_TARGET.fetch_uri),
             now=NOW,
         )
