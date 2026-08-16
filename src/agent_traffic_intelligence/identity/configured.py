@@ -185,7 +185,7 @@ class _InlineDataSignatureAgentParser:
                 continue
             if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
                 continue
-            if not reference.uri[:5].casefold() == "data:":
+            if reference.uri[:5].casefold() != "data:":
                 continue
             digest = hashlib.sha256(reference.uri.encode("utf-8")).hexdigest()
             if digest != self.uri_sha256:
@@ -569,7 +569,7 @@ class ProviderAwareVerificationManager(VerificationManager):
         for reference in references:
             if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
                 continue
-            if not reference.uri[:5].casefold() == "data:":
+            if reference.uri[:5].casefold() != "data:":
                 continue
             try:
                 directory = parse_data_directory_uri(reference.uri)
