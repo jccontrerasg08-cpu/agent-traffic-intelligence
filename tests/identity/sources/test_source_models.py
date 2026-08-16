@@ -79,6 +79,7 @@ def test_source_metadata_defaults_old_manifests_to_no_key_bindings() -> None:
     )
 
     assert metadata.key_authority_bindings == ()
+    assert metadata.acquisition.value == "unknown"
 
 
 def test_source_cache_persists_only_derived_key_bindings(tmp_path) -> None:
