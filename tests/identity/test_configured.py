@@ -137,6 +137,7 @@ def cached_crypto_document(
     *,
     acquisition: SourceAcquisition,
     with_binding: bool = False,
+    retrieved_at: datetime | None = None,
     expires_at: datetime | None = None,
     content: bytes = b'{"keys":[]}',
 ) -> SourceDocument:
@@ -157,7 +158,7 @@ def cached_crypto_document(
         source_type=SourceType.KEY_DIRECTORY,
         provider="google",
         binding_scope=source.binding_scope,
-        retrieved_at=NOW - timedelta(minutes=5),
+        retrieved_at=retrieved_at or NOW - timedelta(minutes=5),
         expires_at=expires_at,
         content=content,
         content_type="application/http-message-signatures-directory+json",
@@ -251,6 +252,24 @@ def test_direct_https_crypto_material_keeps_agent_identity_scope() -> None:
 
     assert evidence.binding_scope is BindingScope.AGENT
     assert evidence.subject == source.subject
+
+
+def test_direct_https_fetched_after_request_falls_back_to_key_identity() -> None:
+    source = google_crypto_source()
+    evidence = apply_cached_crypto_binding(
+        raw_crypto_pass(source),
+        document=cached_crypto_document(
+            source,
+            acquisition=SourceAcquisition.DIRECT_HTTPS,
+            retrieved_at=NOW + timedelta(seconds=1),
+        ),
+        profile=source,
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.binding_scope is BindingScope.KEY
+    assert evidence.subject == KEY_THUMBPRINT
 
 
 def test_redistributed_crypto_without_binding_falls_back_to_key_identity() -> None:
