@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -16,6 +17,7 @@ from agent_traffic_intelligence.identity.crypto.cached_discovery import (
 )
 from agent_traffic_intelligence.identity.crypto.directory import (
     DirectoryFormatError,
+    KeyDirectory,
     parse_key_directory,
 )
 from agent_traffic_intelligence.identity.crypto.discovery import (
@@ -24,6 +26,7 @@ from agent_traffic_intelligence.identity.crypto.discovery import (
 )
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
     SignatureAgentDiscoveryType,
+    SignatureAgentFormatError,
     SignatureAgentProfile,
     SignatureAgentReference,
     StructuredFieldSignatureAgentParser,
@@ -49,6 +52,10 @@ from agent_traffic_intelligence.identity.profiles import (
     load_provider_profiles,
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
+from agent_traffic_intelligence.identity.sources.data_document import (
+    DataDocumentError,
+    parse_data_directory_uri,
+)
 from agent_traffic_intelligence.identity.sources.models import (
     SourceAcquisition,
     SourceDocument,
@@ -59,6 +66,11 @@ from agent_traffic_intelligence.identity.sources.trust import (
 )
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
+
+_INLINE_DATA_SENTINEL = (
+    "https://inline-data.invalid/.well-known/http-message-signatures-directory"
+)
+_INLINE_DATA_SOURCE_URI = "urn:ati:inline-data-directory:redacted"
 
 
 class ConfiguredCryptoDiscoveryError(ValueError):
@@ -157,6 +169,98 @@ def apply_cached_crypto_binding(
             "Signature-Agent URL authority binding"
         ),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _InlineDataSignatureAgentParser:
+    """Revalidate one inline member while replacing its payload with a safe sentinel."""
+
+    label: str | None
+    uri_sha256: str
+
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        references = StructuredFieldSignatureAgentParser().parse(raw)
+        for reference in references:
+            if reference.label != self.label:
+                continue
+            if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
+                continue
+            if not reference.uri[:5].casefold() == "data:":
+                continue
+            digest = hashlib.sha256(reference.uri.encode("utf-8")).hexdigest()
+            if digest != self.uri_sha256:
+                continue
+            return (
+                SignatureAgentReference(
+                    label=reference.label,
+                    uri=_INLINE_DATA_SENTINEL,
+                    discovery_type=SignatureAgentDiscoveryType.DIRECTORY,
+                    legacy=False,
+                ),
+            )
+        raise SignatureAgentFormatError(
+            "signed inline Signature-Agent member no longer matches parsed key material"
+        )
+
+
+@dataclass(slots=True)
+class _InlineDataAdapter:
+    directory: KeyDirectory
+    label: str | None
+    uri_sha256: str
+    name: str = "inline-data-web-bot-auth"
+    method: VerificationMethod = VerificationMethod.WEB_BOT_AUTH
+    binding_scope: BindingScope = BindingScope.KEY
+
+    def verify(
+        self,
+        *,
+        event: RequestEvent,
+        context: VerificationContext,
+        claim: IdentityClaim,
+    ) -> VerificationEvidence:
+        raw = WebBotAuthVerifier(
+            directory=self.directory,
+            directory_uri=_INLINE_DATA_SENTINEL,
+            signature_agent_uri=_INLINE_DATA_SENTINEL,
+            binding_scope=BindingScope.KEY,
+            subject=None,
+            trust_policy=SourceTrustPolicy(frozenset({_INLINE_DATA_SENTINEL})),
+            signature_agent_parser=_InlineDataSignatureAgentParser(
+                label=self.label,
+                uri_sha256=self.uri_sha256,
+            ),
+        ).verify(context=context, claim=claim, now=event.timestamp)
+        details = dict(raw.details)
+        details.update(
+            {
+                "inline_data": True,
+                "directory_trusted": False,
+                "key_source_trusted": False,
+                "identity_bound": False,
+            }
+        )
+        thumbprint = details.get("key_thumbprint")
+        explanation = raw.explanation
+        if raw.outcome is VerificationOutcome.PASS:
+            explanation = (
+                "HTTP signature verified with an inline data-directory key; "
+                "provider and agent identity remain unbound"
+            )
+        return replace(
+            raw,
+            binding_scope=BindingScope.KEY,
+            authority=None,
+            subject=(
+                thumbprint if isinstance(thumbprint, str) and thumbprint else None
+            ),
+            explanation=explanation,
+            source_uri=_INLINE_DATA_SOURCE_URI,
+            retrieved_at=None,
+            expires_at=None,
+            source_sha256=None,
+            details=details,
+        )
 
 
 @dataclass(slots=True)
@@ -429,6 +533,7 @@ class ProviderAwareVerificationManager(VerificationManager):
         if profile is not None:
             verifiers.extend(self._network_verifiers(profile, claim))
         if context.signature is not None and context.signature_input is not None:
+            verifiers.extend(self._inline_data_verifiers(context))
             verifiers.extend(self._crypto_verifiers())
         manager = VerificationManager(tuple(verifiers), policy=self._effective_policy)
         return manager.verify(event=event, context=context, claim=claim)
@@ -445,6 +550,40 @@ class ProviderAwareVerificationManager(VerificationManager):
         ]
         if self._mode is not VerificationMode.OFFLINE and profile.fcrdns is not None:
             result.append(_FcrdnsAdapter(profile.provider, profile.fcrdns))
+        return result
+
+    @staticmethod
+    def _inline_data_verifiers(
+        context: VerificationContext,
+    ) -> list[IdentityVerifier]:
+        if context.signature_agent is None:
+            return []
+        try:
+            references = StructuredFieldSignatureAgentParser().parse(
+                context.signature_agent
+            )
+        except (SignatureAgentFormatError, RuntimeError):
+            return []
+
+        result: list[IdentityVerifier] = []
+        for reference in references:
+            if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
+                continue
+            if not reference.uri[:5].casefold() == "data:":
+                continue
+            try:
+                directory = parse_data_directory_uri(reference.uri)
+            except DataDocumentError:
+                continue
+            result.append(
+                _InlineDataAdapter(
+                    directory=directory,
+                    label=reference.label,
+                    uri_sha256=hashlib.sha256(
+                        reference.uri.encode("utf-8")
+                    ).hexdigest(),
+                )
+            )
         return result
 
     def _crypto_verifiers(self) -> list[IdentityVerifier]:
