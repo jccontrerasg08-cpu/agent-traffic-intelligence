@@ -29,6 +29,7 @@ class SourceAcquisition(StrEnum):
     """How ATI obtained source bytes for URL-to-key attribution decisions."""
 
     UNKNOWN = "unknown"
+    DIRECT_HTTPS = "direct_https"
 
 
 def _aware(value: datetime | None, name: str) -> None:
