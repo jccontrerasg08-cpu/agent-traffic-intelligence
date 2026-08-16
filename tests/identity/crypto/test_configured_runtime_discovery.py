@@ -43,6 +43,7 @@ serialization = pytest.importorskip("cryptography.hazmat.primitives.serializatio
 
 JWKS_URI = "https://keys.example/jwks.json?tenant=one"
 CIMD_URI = "https://agent.example/client-metadata.json"
+CIMD_JWKS_URI = "https://keys.agent.example/rotating-jwks.json"
 
 
 @dataclass
@@ -170,6 +171,60 @@ def _manager(
     return manager
 
 
+def _cimd_source() -> CryptoSourceProfile:
+    return CryptoSourceProfile(
+        signature_agent_uri=CIMD_URI,
+        directory_uri=CIMD_URI,
+        interoperability_profile=CryptoInteroperabilityProfile.IETF_HTTPSIG_PROTOCOL_01,
+        discovery_type=CryptoDiscoveryType.CIMD,
+        binding_scope=BindingScope.AGENT,
+        reviewed_on="2026-08-16",
+        subject="ExampleBot",
+    )
+
+
+def _cache_external_cimd(
+    cache: SourceCache,
+    resolver: SigningResolver,
+    *,
+    now: datetime,
+) -> None:
+    card = {
+        "client_id": CIMD_URI,
+        "client_name": "Example Bot",
+        "jwks_uri": CIMD_JWKS_URI,
+        "web_bot_auth": {"expected-user-agent": "ExampleBot/1.0"},
+    }
+    cache.put(
+        SourceDocument.from_bytes(
+            uri=CIMD_URI,
+            source_type=SourceType.AGENT_CARD,
+            provider="example",
+            binding_scope=BindingScope.AGENT,
+            retrieved_at=now - timedelta(minutes=1),
+            expires_at=now + timedelta(hours=1),
+            content=json.dumps(card).encode(),
+            content_type="application/json",
+            parser_profile="draft-meunier-webbotauth-registry-03",
+            acquisition=SourceAcquisition.DIRECT_HTTPS,
+        )
+    )
+    cache.put(
+        SourceDocument.from_bytes(
+            uri=CIMD_JWKS_URI,
+            source_type=SourceType.JWK_SET,
+            provider="example",
+            binding_scope=BindingScope.AGENT,
+            retrieved_at=now - timedelta(minutes=1),
+            expires_at=now + timedelta(hours=1),
+            content=json.dumps({"keys": [_public_jwk(resolver)]}).encode(),
+            content_type="application/json",
+            parser_profile="rfc7517",
+            acquisition=SourceAcquisition.DIRECT_HTTPS,
+        )
+    )
+
+
 def test_runtime_verifies_allowlisted_cached_jwks_without_network(tmp_path) -> None:
     now = datetime.now(UTC)
     resolver = SigningResolver()
@@ -218,15 +273,7 @@ def test_runtime_verifies_allowlisted_cached_cimd_inline_jwks_without_network(
 ) -> None:
     now = datetime.now(UTC)
     resolver = SigningResolver()
-    source = CryptoSourceProfile(
-        signature_agent_uri=CIMD_URI,
-        directory_uri=CIMD_URI,
-        interoperability_profile=CryptoInteroperabilityProfile.IETF_HTTPSIG_PROTOCOL_01,
-        discovery_type=CryptoDiscoveryType.CIMD,
-        binding_scope=BindingScope.AGENT,
-        reviewed_on="2026-08-16",
-        subject="ExampleBot",
-    )
+    source = _cimd_source()
     cache = SourceCache(tmp_path)
     card = {
         "client_id": CIMD_URI,
@@ -257,6 +304,63 @@ def test_runtime_verifies_allowlisted_cached_cimd_inline_jwks_without_network(
     )
     resolution = manager.verify(
         event=_event(now, "runtime-cimd-1"),
+        context=_context(message),
+        claim=_claim(),
+    )
+
+    assert resolution.state is VerificationState.VERIFIED
+    assert resolution.agent_verified is True
+    assert len(resolution.methods) == 1
+    assert resolution.methods[0].outcome is VerificationOutcome.PASS
+    assert resolution.methods[0].details["key_source_trusted"] is True
+
+
+def test_runtime_does_not_trust_nested_cimd_jwks_without_explicit_allowlist(
+    tmp_path,
+) -> None:
+    now = datetime.now(UTC)
+    resolver = SigningResolver()
+    cache = SourceCache(tmp_path)
+    _cache_external_cimd(cache, resolver, now=now)
+
+    manager = _manager(cache, _cimd_source(), allowlisted=frozenset({CIMD_URI}))
+    message = _signed_message(
+        resolver,
+        signature_agent_uri=CIMD_URI,
+        discovery_type="cimd",
+    )
+    resolution = manager.verify(
+        event=_event(now, "runtime-cimd-untrusted-jwks"),
+        context=_context(message),
+        claim=_claim(),
+    )
+
+    assert resolution.state is VerificationState.CLAIMED
+    assert resolution.agent_verified is False
+    assert len(resolution.methods) == 1
+    assert resolution.methods[0].outcome is VerificationOutcome.UNAVAILABLE
+
+
+def test_runtime_verifies_nested_cimd_jwks_when_both_sources_are_allowlisted(
+    tmp_path,
+) -> None:
+    now = datetime.now(UTC)
+    resolver = SigningResolver()
+    cache = SourceCache(tmp_path)
+    _cache_external_cimd(cache, resolver, now=now)
+
+    manager = _manager(
+        cache,
+        _cimd_source(),
+        allowlisted=frozenset({CIMD_URI, CIMD_JWKS_URI}),
+    )
+    message = _signed_message(
+        resolver,
+        signature_agent_uri=CIMD_URI,
+        discovery_type="cimd",
+    )
+    resolution = manager.verify(
+        event=_event(now, "runtime-cimd-trusted-jwks"),
         context=_context(message),
         claim=_claim(),
     )
