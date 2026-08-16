@@ -4,7 +4,12 @@ import base64
 
 import pytest
 
+import agent_traffic_intelligence.identity.crypto.key_resolver as key_resolver_module
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
+from agent_traffic_intelligence.identity.crypto.jwk_set import (
+    JwkSetKeySelectionError,
+    parse_jwk_set,
+)
 from agent_traffic_intelligence.identity.crypto.key_resolver import (
     JwkKeyResolver,
     KeyMaterialUnavailable,
@@ -87,3 +92,79 @@ def test_missing_or_unsupported_key_material_fails_closed() -> None:
         resolver.resolve_public_key(unsupported.keys[0].key_id)
     with pytest.raises(KeyError):
         resolver.resolve_directory_key("missing")
+
+
+def test_generic_resolver_materializes_operator_kid_ed25519_key() -> None:
+    private = ed25519.Ed25519PrivateKey.generate()
+    x = private.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+    jwk_set = parse_jwk_set(
+        {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": b64url(x),
+                    "kid": "operator-key",
+                }
+            ]
+        }
+    )
+    resolver = key_resolver_module.JwkSetKeyResolver(jwk_set)
+
+    selected = resolver.resolve_jwk_set_key("operator-key")
+    resolved = resolver.resolve_public_key("operator-key")
+
+    assert selected.kid == "operator-key"
+    assert isinstance(resolved, ed25519.Ed25519PublicKey)
+    message = b"ati-generic-jwk-test"
+    resolved.verify(private.sign(message), message)
+
+
+def test_generic_resolver_falls_back_to_thumbprint_when_kid_differs() -> None:
+    private = ed25519.Ed25519PrivateKey.generate()
+    x = private.public_key().public_bytes(
+        serialization.Encoding.Raw,
+        serialization.PublicFormat.Raw,
+    )
+    jwk_set = parse_jwk_set(
+        {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": b64url(x),
+                    "kid": "operator-key",
+                }
+            ]
+        }
+    )
+    key = jwk_set.keys[0]
+    resolver = key_resolver_module.JwkSetKeyResolver(jwk_set)
+
+    assert resolver.resolve_jwk_set_key(key.thumbprint) is key
+    assert isinstance(
+        resolver.resolve_public_key(key.thumbprint),
+        ed25519.Ed25519PublicKey,
+    )
+
+
+def test_generic_resolver_preserves_selection_errors() -> None:
+    jwk_set = parse_jwk_set(
+        {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": b64url(bytes(range(32))),
+                    "kid": "known",
+                }
+            ]
+        }
+    )
+    resolver = key_resolver_module.JwkSetKeyResolver(jwk_set)
+
+    with pytest.raises(JwkSetKeySelectionError):
+        resolver.resolve_public_key("missing")

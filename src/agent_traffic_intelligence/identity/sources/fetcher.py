@@ -193,7 +193,16 @@ class SafeFetcher:
                 location = self._header(response.headers, "location")
                 if location is None or not location.strip():
                     raise FetchProtocolError("redirect response is missing Location")
-                current = urljoin(current, location)
+                next_uri = urljoin(current, location)
+                if (
+                    urlsplit(current).scheme.casefold(),
+                    urlsplit(current).netloc.casefold(),
+                ) != (
+                    urlsplit(next_uri).scheme.casefold(),
+                    urlsplit(next_uri).netloc.casefold(),
+                ):
+                    headers = {}
+                current = next_uri
                 redirects += 1
                 continue
             return self._finalize(current, response, redirects)

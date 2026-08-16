@@ -27,6 +27,14 @@ from agent_traffic_intelligence.identity.sources.fetcher import (
     FetchProtocolError,
     FetchSecurityError,
 )
+from agent_traffic_intelligence.identity.standards_health import (
+    DatatrackerJsonClient,
+    DatatrackerPayloadError,
+    StandardsHealthOperationalError,
+    StandardsHealthReport,
+    UrllibDatatrackerTransport,
+    check_pinned_drafts,
+)
 from agent_traffic_intelligence.parsers.jsonl import (
     ParseError,
     iter_jsonl,
@@ -127,6 +135,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     refresh.add_argument("--provider", help="Refresh only one configured provider.")
     sources_sub.add_parser("validate", help="Validate all cached source documents offline.")
+
+    standards = subparsers.add_parser(
+        "standards",
+        help="Inspect pinned standards and draft health.",
+    )
+    standards_sub = standards.add_subparsers(dest="standards_command", required=True)
+    standards_sub.add_parser(
+        "health",
+        help="Check pinned Internet-Draft revisions directly against Datatracker.",
+    )
 
     return parser
 
@@ -411,6 +429,32 @@ def _sources_refresh(provider: str | None) -> int:
     return 0
 
 
+def _standards_health_payload(report: StandardsHealthReport) -> dict[str, object]:
+    return {
+        "review_required": report.review_required,
+        "drafts": [
+            {
+                "pinned": draft.pin.pinned,
+                "observed_revision": draft.observed_revision,
+                "status": draft.status.value,
+                "reasons": list(draft.reasons),
+            }
+            for draft in report.drafts
+        ],
+    }
+
+
+def _standards_health() -> int:
+    client = DatatrackerJsonClient(transport=UrllibDatatrackerTransport())
+    try:
+        report = check_pinned_drafts(client=client)
+    except (DatatrackerPayloadError, StandardsHealthOperationalError, ValueError) as exc:
+        print(f"standards health failed: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(_standards_health_payload(report), indent=2, sort_keys=True))
+    return 1 if report.review_required else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point. Returns a process-compatible status code."""
 
@@ -429,6 +473,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _sources_validate()
     if args.command == "sources" and args.sources_command == "refresh":
         return _sources_refresh(args.provider)
+    if args.command == "standards" and args.standards_command == "health":
+        return _standards_health()
     raise RuntimeError("unreachable command dispatch")
 
 

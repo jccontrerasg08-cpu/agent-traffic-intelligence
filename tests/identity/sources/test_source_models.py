@@ -30,6 +30,11 @@ def binding() -> KeyAuthorityBinding:
     )
 
 
+def test_source_type_distinguishes_generic_jwk_set_from_strict_directory() -> None:
+    assert SourceType.JWK_SET.value == "jwk_set"
+    assert SourceType.JWK_SET is not SourceType.KEY_DIRECTORY
+
+
 def test_key_authority_binding_is_privacy_safe_and_round_trips() -> None:
     value = binding()
     payload = value.to_dict()
@@ -79,6 +84,7 @@ def test_source_metadata_defaults_old_manifests_to_no_key_bindings() -> None:
     )
 
     assert metadata.key_authority_bindings == ()
+    assert metadata.acquisition.value == "unknown"
 
 
 def test_source_cache_persists_only_derived_key_bindings(tmp_path) -> None:

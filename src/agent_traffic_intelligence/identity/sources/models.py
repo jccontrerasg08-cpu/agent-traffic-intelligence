@@ -14,6 +14,7 @@ from agent_traffic_intelligence.identity.models import BindingScope
 class SourceType(StrEnum):
     IP_RANGES = "ip_ranges"
     KEY_DIRECTORY = "key_directory"
+    JWK_SET = "jwk_set"
     AGENT_CARD = "agent_card"
     STANDARD_PROFILE = "standard_profile"
 
@@ -23,6 +24,13 @@ class ValidationStatus(StrEnum):
     VALID = "valid"
     INVALID = "invalid"
     STALE = "stale"
+
+
+class SourceAcquisition(StrEnum):
+    """How ATI obtained source bytes for URL-to-key attribution decisions."""
+
+    UNKNOWN = "unknown"
+    DIRECT_HTTPS = "direct_https"
 
 
 def _aware(value: datetime | None, name: str) -> None:
@@ -105,6 +113,7 @@ class SourceMetadata:
     last_modified: str | None = None
     validation_status: ValidationStatus = ValidationStatus.UNVALIDATED
     key_authority_bindings: tuple[KeyAuthorityBinding, ...] = ()
+    acquisition: SourceAcquisition = SourceAcquisition.UNKNOWN
 
     def __post_init__(self) -> None:
         _aware(self.retrieved_at, "retrieved_at")
@@ -137,6 +146,7 @@ class SourceMetadata:
             "key_authority_bindings": [
                 binding.to_dict() for binding in self.key_authority_bindings
             ],
+            "acquisition": self.acquisition.value,
         }
 
     @classmethod
@@ -187,6 +197,7 @@ class SourceMetadata:
                 str(payload.get("validation_status", "unvalidated"))
             ),
             key_authority_bindings=bindings,
+            acquisition=SourceAcquisition(str(payload.get("acquisition", "unknown"))),
         )
 
 
@@ -223,6 +234,7 @@ class SourceDocument:
         last_modified: str | None = None,
         validation_status: ValidationStatus = ValidationStatus.UNVALIDATED,
         key_authority_bindings: tuple[KeyAuthorityBinding, ...] = (),
+        acquisition: SourceAcquisition = SourceAcquisition.UNKNOWN,
     ) -> SourceDocument:
         digest = hashlib.sha256(content).hexdigest()
         metadata = SourceMetadata(
@@ -240,5 +252,6 @@ class SourceDocument:
             last_modified=last_modified,
             validation_status=validation_status,
             key_authority_bindings=key_authority_bindings,
+            acquisition=acquisition,
         )
         return cls(metadata=metadata, content=bytes(content))

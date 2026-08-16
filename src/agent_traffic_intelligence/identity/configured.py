@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
+from datetime import datetime
+from urllib.parse import urlsplit
 
 from agent_traffic_intelligence.identity.context import VerificationContext
+from agent_traffic_intelligence.identity.crypto.cached_discovery import (
+    CachedDiscoveryError,
+    CachedDiscoveryStale,
+    CachedDiscoveryUnavailable,
+    ResolvedSignatureAgentMaterial,
+    resolve_cached_signature_agent,
+)
 from agent_traffic_intelligence.identity.crypto.directory import (
     DirectoryFormatError,
+    KeyDirectory,
     parse_key_directory,
 )
+from agent_traffic_intelligence.identity.crypto.discovery import (
+    SignatureAgentResolutionError,
+    plan_signature_agent_resolution,
+)
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    SignatureAgentDiscoveryType,
+    SignatureAgentFormatError,
     SignatureAgentProfile,
+    SignatureAgentReference,
     StructuredFieldSignatureAgentParser,
 )
 from agent_traffic_intelligence.identity.crypto.web_bot_auth import WebBotAuthVerifier
@@ -26,6 +44,8 @@ from agent_traffic_intelligence.identity.network.fcrdns import FcrdnsVerifier
 from agent_traffic_intelligence.identity.network.verifier import OfficialRangeVerifier
 from agent_traffic_intelligence.identity.policy import VerificationMode, VerificationPolicy
 from agent_traffic_intelligence.identity.profiles import (
+    CryptoDiscoveryType,
+    CryptoResponseBindingPolicy,
     CryptoSourceProfile,
     FcrdnsProfile,
     ProviderProfile,
@@ -33,14 +53,217 @@ from agent_traffic_intelligence.identity.profiles import (
     load_provider_profiles,
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
-from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
+from agent_traffic_intelligence.identity.sources.data_document import (
+    DataDocumentError,
+    parse_data_directory_uri,
+)
+from agent_traffic_intelligence.identity.sources.models import (
+    SourceAcquisition,
+    SourceDocument,
+)
+from agent_traffic_intelligence.identity.sources.trust import (
+    SourceTrustPolicy,
+    canonicalize_source_uri,
+)
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
+
+_INLINE_DATA_SENTINEL = (
+    "https://inline-data.invalid/.well-known/http-message-signatures-directory"
+)
+_INLINE_DATA_SOURCE_URI = "urn:ati:inline-data-directory:redacted"
+
+
+class ConfiguredCryptoDiscoveryError(ValueError):
+    """A declarative crypto profile is inconsistent with its discovery contract."""
 
 
 def signature_agent_profile_for(profile: CryptoSourceProfile) -> SignatureAgentProfile:
     """Map a validated declarative crypto source to its parser profile."""
 
     return SignatureAgentProfile(profile.interoperability_profile.value)
+
+
+def configured_signature_agent_reference(
+    profile: CryptoSourceProfile,
+) -> SignatureAgentReference:
+    """Build the protocol reference represented by one declarative crypto source."""
+
+    return SignatureAgentReference(
+        label=None,
+        uri=profile.signature_agent_uri,
+        discovery_type=SignatureAgentDiscoveryType(profile.discovery_type.value),
+        legacy=signature_agent_profile_for(profile) is SignatureAgentProfile.CLOUDFLARE_LEGACY,
+    )
+
+
+def resolve_configured_crypto_material(
+    profile: CryptoSourceProfile,
+    *,
+    cache: SourceCache,
+    trust_policy: SourceTrustPolicy,
+    now: datetime,
+) -> ResolvedSignatureAgentMaterial:
+    """Resolve one configured crypto source from allowlisted local cache only."""
+
+    reference = configured_signature_agent_reference(profile)
+    try:
+        target = plan_signature_agent_resolution(reference)
+        declared_fetch_uri = canonicalize_source_uri(profile.directory_uri)
+    except (SignatureAgentResolutionError, ValueError) as exc:
+        raise ConfiguredCryptoDiscoveryError(
+            "configured crypto discovery has an invalid fetch URI"
+        ) from exc
+    if declared_fetch_uri != target.fetch_uri:
+        raise ConfiguredCryptoDiscoveryError(
+            "configured crypto fetch URI does not match the Signature-Agent discovery target"
+        )
+    return resolve_cached_signature_agent(
+        reference,
+        cache=cache,
+        trust_policy=trust_policy,
+        now=now,
+    )
+
+
+def apply_cached_crypto_binding(
+    evidence: VerificationEvidence,
+    *,
+    document: SourceDocument,
+    profile: CryptoSourceProfile,
+    now: datetime,
+) -> VerificationEvidence:
+    """Constrain crypto identity scope to what cached source provenance proves."""
+
+    if evidence.outcome is not VerificationOutcome.PASS:
+        return evidence
+    if evidence.binding_scope is BindingScope.KEY:
+        return evidence
+    if (
+        profile.response_binding_policy
+        is CryptoResponseBindingPolicy.DEPLOYED_COMPATIBLE
+        and document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS
+        and document.metadata.retrieved_at <= now
+    ):
+        return evidence
+
+    thumbprint = evidence.details.get("key_thumbprint")
+    expected_authority = urlsplit(profile.directory_uri).netloc.casefold()
+    if isinstance(thumbprint, str) and thumbprint and expected_authority:
+        for binding in document.metadata.key_authority_bindings:
+            if binding.key_thumbprint != thumbprint:
+                continue
+            if binding.authority.casefold() != expected_authority:
+                continue
+            if binding.body_sha256 != document.metadata.sha256:
+                continue
+            if binding.verified_at > now:
+                continue
+            if binding.expires_at is None or binding.expires_at < now:
+                continue
+            return evidence
+
+    return replace(
+        evidence,
+        binding_scope=BindingScope.KEY,
+        subject=thumbprint if isinstance(thumbprint, str) and thumbprint else None,
+        explanation=(
+            f"{evidence.explanation}; cached key material has no current "
+            "Signature-Agent URL authority binding"
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _InlineDataSignatureAgentParser:
+    """Revalidate one inline member while replacing its payload with a safe sentinel."""
+
+    label: str | None
+    uri_sha256: str
+
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        references = StructuredFieldSignatureAgentParser().parse(raw)
+        for reference in references:
+            if reference.label != self.label:
+                continue
+            if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
+                continue
+            if reference.uri[:5].casefold() != "data:":
+                continue
+            digest = hashlib.sha256(reference.uri.encode("utf-8")).hexdigest()
+            if digest != self.uri_sha256:
+                continue
+            return (
+                SignatureAgentReference(
+                    label=reference.label,
+                    uri=_INLINE_DATA_SENTINEL,
+                    discovery_type=SignatureAgentDiscoveryType.DIRECTORY,
+                    legacy=False,
+                ),
+            )
+        raise SignatureAgentFormatError(
+            "signed inline Signature-Agent member no longer matches parsed key material"
+        )
+
+
+@dataclass(slots=True)
+class _InlineDataAdapter:
+    directory: KeyDirectory
+    label: str | None
+    uri_sha256: str
+    name: str = "inline-data-web-bot-auth"
+    method: VerificationMethod = VerificationMethod.WEB_BOT_AUTH
+    binding_scope: BindingScope = BindingScope.KEY
+
+    def verify(
+        self,
+        *,
+        event: RequestEvent,
+        context: VerificationContext,
+        claim: IdentityClaim,
+    ) -> VerificationEvidence:
+        raw = WebBotAuthVerifier(
+            directory=self.directory,
+            directory_uri=_INLINE_DATA_SENTINEL,
+            signature_agent_uri=_INLINE_DATA_SENTINEL,
+            binding_scope=BindingScope.KEY,
+            subject=None,
+            trust_policy=SourceTrustPolicy(frozenset({_INLINE_DATA_SENTINEL})),
+            signature_agent_parser=_InlineDataSignatureAgentParser(
+                label=self.label,
+                uri_sha256=self.uri_sha256,
+            ),
+        ).verify(context=context, claim=claim, now=event.timestamp)
+        details = dict(raw.details)
+        details.update(
+            {
+                "inline_data": True,
+                "directory_trusted": False,
+                "key_source_trusted": False,
+                "identity_bound": False,
+            }
+        )
+        thumbprint = details.get("key_thumbprint")
+        explanation = raw.explanation
+        if raw.outcome is VerificationOutcome.PASS:
+            explanation = (
+                "HTTP signature verified with an inline data-directory key; "
+                "provider and agent identity remain unbound"
+            )
+        return replace(
+            raw,
+            binding_scope=BindingScope.KEY,
+            authority=None,
+            subject=(
+                thumbprint if isinstance(thumbprint, str) and thumbprint else None
+            ),
+            explanation=explanation,
+            source_uri=_INLINE_DATA_SOURCE_URI,
+            retrieved_at=None,
+            expires_at=None,
+            source_sha256=None,
+            details=details,
+        )
 
 
 @dataclass(slots=True)
@@ -137,6 +360,13 @@ class _CryptoAdapter:
         context: VerificationContext,
         claim: IdentityClaim,
     ) -> VerificationEvidence:
+        if self.profile.discovery_type is not CryptoDiscoveryType.DIRECTORY:
+            return self._verify_discovered_key_set(
+                event=event,
+                context=context,
+                claim=claim,
+            )
+
         document = self.cache.get(self.profile.directory_uri)
         if document is None:
             return _neutral_missing(
@@ -146,6 +376,25 @@ class _CryptoAdapter:
                 subject=self.profile.subject,
                 source_uri=self.profile.directory_uri,
                 explanation="Web Bot Auth key directory is not present in the local cache",
+            )
+        expires_at = document.metadata.expires_at
+        if expires_at is not None and expires_at < event.timestamp:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.STALE,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation="cached Web Bot Auth key directory is stale",
+                source_uri=document.metadata.uri,
+                source_profile=document.metadata.parser_profile,
+                retrieved_at=document.metadata.retrieved_at,
+                expires_at=expires_at,
+                source_sha256=document.metadata.sha256,
+                details={
+                    "cached": True,
+                    "acquisition": document.metadata.acquisition.value,
+                },
             )
         try:
             directory = parse_key_directory(document.content)
@@ -158,7 +407,7 @@ class _CryptoAdapter:
                 subject=self.profile.subject,
                 explanation=f"cached key directory could not be validated: {exc}",
                 source_uri=document.metadata.uri,
-                source_profile="directory-05",
+                source_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
                 retrieved_at=document.metadata.retrieved_at,
                 expires_at=document.metadata.expires_at,
                 source_sha256=document.metadata.sha256,
@@ -175,7 +424,87 @@ class _CryptoAdapter:
                 profile=signature_agent_profile_for(self.profile)
             ),
         ).verify(context=context, claim=claim, now=event.timestamp)
-        return replace(raw, authority=self.provider)
+        bound = apply_cached_crypto_binding(
+            raw,
+            document=document,
+            profile=self.profile,
+            now=event.timestamp,
+        )
+        return replace(bound, authority=self.provider)
+
+    def _verify_discovered_key_set(
+        self,
+        *,
+        event: RequestEvent,
+        context: VerificationContext,
+        claim: IdentityClaim,
+    ) -> VerificationEvidence:
+        try:
+            resolved = resolve_configured_crypto_material(
+                self.profile,
+                cache=self.cache,
+                trust_policy=self.trust,
+                now=event.timestamp,
+            )
+        except CachedDiscoveryStale as exc:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.STALE,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation=str(exc),
+                source_uri=self.profile.directory_uri,
+                source_profile="runtime-cache",
+                retrieved_at=None,
+                expires_at=None,
+                source_sha256=None,
+                details={"cached": True},
+            )
+        except CachedDiscoveryUnavailable as exc:
+            return _neutral_missing(
+                method=self.method,
+                scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                source_uri=self.profile.directory_uri,
+                explanation=str(exc),
+            )
+        except (CachedDiscoveryError, ConfiguredCryptoDiscoveryError) as exc:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.ERROR,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation=f"cached crypto discovery could not be validated: {exc}",
+                source_uri=self.profile.directory_uri,
+                source_profile="runtime-cache",
+                retrieved_at=None,
+                expires_at=None,
+                source_sha256=None,
+                details={"cached": True},
+            )
+
+        key_document = resolved.documents[-1]
+        raw = WebBotAuthVerifier(
+            jwk_set=resolved.jwk_set,
+            key_set_uri=key_document.metadata.uri,
+            signature_agent_uri=self.profile.signature_agent_uri,
+            binding_scope=self.profile.binding_scope,
+            subject=self.profile.subject,
+            trust_policy=self.trust,
+            signature_agent_parser=StructuredFieldSignatureAgentParser(
+                profile=signature_agent_profile_for(self.profile)
+            ),
+        ).verify(context=context, claim=claim, now=event.timestamp)
+        bound = apply_cached_crypto_binding(
+            raw,
+            document=key_document,
+            profile=self.profile,
+            now=event.timestamp,
+        )
+        return replace(bound, authority=self.provider)
 
 
 class ProviderAwareVerificationManager(VerificationManager):
@@ -207,6 +536,7 @@ class ProviderAwareVerificationManager(VerificationManager):
         if profile is not None:
             verifiers.extend(self._network_verifiers(profile, claim))
         if context.signature is not None and context.signature_input is not None:
+            verifiers.extend(self._inline_data_verifiers(context))
             verifiers.extend(self._crypto_verifiers())
         manager = VerificationManager(tuple(verifiers), policy=self._effective_policy)
         return manager.verify(event=event, context=context, claim=claim)
@@ -223,6 +553,40 @@ class ProviderAwareVerificationManager(VerificationManager):
         ]
         if self._mode is not VerificationMode.OFFLINE and profile.fcrdns is not None:
             result.append(_FcrdnsAdapter(profile.provider, profile.fcrdns))
+        return result
+
+    @staticmethod
+    def _inline_data_verifiers(
+        context: VerificationContext,
+    ) -> list[IdentityVerifier]:
+        if context.signature_agent is None:
+            return []
+        try:
+            references = StructuredFieldSignatureAgentParser().parse(
+                context.signature_agent
+            )
+        except (SignatureAgentFormatError, RuntimeError):
+            return []
+
+        result: list[IdentityVerifier] = []
+        for reference in references:
+            if reference.discovery_type is not SignatureAgentDiscoveryType.DIRECTORY:
+                continue
+            if reference.uri[:5].casefold() != "data:":
+                continue
+            try:
+                directory = parse_data_directory_uri(reference.uri)
+            except DataDocumentError:
+                continue
+            result.append(
+                _InlineDataAdapter(
+                    directory=directory,
+                    label=reference.label,
+                    uri_sha256=hashlib.sha256(
+                        reference.uri.encode("utf-8")
+                    ).hexdigest(),
+                )
+            )
         return result
 
     def _crypto_verifiers(self) -> list[IdentityVerifier]:

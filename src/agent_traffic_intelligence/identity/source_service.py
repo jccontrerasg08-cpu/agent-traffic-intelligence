@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from agent_traffic_intelligence.identity.crypto.directory import parse_key_directory
+from agent_traffic_intelligence.identity.crypto.directory_response import (
+    DirectoryResponseVerifier,
+)
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.network.formats.jafar import parse_jafar
 from agent_traffic_intelligence.identity.network.formats.prefixes_v1 import (
@@ -15,10 +18,15 @@ from agent_traffic_intelligence.identity.profiles import load_provider_profiles
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
 from agent_traffic_intelligence.identity.sources.fetcher import FetchResult, SafeFetcher
 from agent_traffic_intelligence.identity.sources.models import (
+    KeyAuthorityBinding,
+    SourceAcquisition,
     SourceDocument,
     SourceType,
     ValidationStatus,
 )
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
+
+_DIRECTORY_MEDIA_TYPE = "application/http-message-signatures-directory+json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +57,7 @@ def configured_sources() -> tuple[SourceSpec, ...]:
                     provider=provider.provider,
                     uri=source.directory_uri,
                     source_type=SourceType.KEY_DIRECTORY,
-                    parser_profile="directory-05",
+                    parser_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
                     binding_scope=source.binding_scope,
                 )
                 for source in provider.crypto.signature_agents
@@ -144,6 +152,16 @@ def _source_created_at(spec: SourceSpec, content: bytes) -> datetime | None:
     raise ValueError(f"unsupported source type: {spec.source_type.value}")
 
 
+def _validate_media_type(spec: SourceSpec, content_type: str | None) -> None:
+    if spec.source_type is not SourceType.KEY_DIRECTORY:
+        return
+    if content_type is None:
+        raise ValueError(f"key directory media type must be {_DIRECTORY_MEDIA_TYPE}")
+    essence = content_type.split(";", 1)[0].strip().casefold()
+    if essence != _DIRECTORY_MEDIA_TYPE:
+        raise ValueError(f"key directory media type must be {_DIRECTORY_MEDIA_TYPE}")
+
+
 def _max_age_seconds(cache_control: str | None) -> int | None:
     if cache_control is None:
         return None
@@ -166,11 +184,41 @@ def _expires_at(retrieved_at: datetime, cache_control: str | None) -> datetime |
     return retrieved_at + timedelta(seconds=max_age)
 
 
+def _key_authority_bindings(
+    spec: SourceSpec,
+    result: FetchResult,
+    *,
+    body: bytes,
+    retrieved_at: datetime,
+) -> tuple[KeyAuthorityBinding, ...]:
+    if spec.source_type is not SourceType.KEY_DIRECTORY:
+        return ()
+    directory = parse_key_directory(body)
+    return DirectoryResponseVerifier().verify(
+        directory=directory,
+        body=body,
+        request_uri=spec.uri,
+        response_uri=result.uri,
+        status_code=result.status,
+        signature=result.signature,
+        signature_input=result.signature_input,
+        content_digest=result.content_digest,
+        now=retrieved_at,
+    ).bindings
+
+
 def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocument:
     if result.body is None:
         raise ValueError("fresh identity source response must contain a body")
+    _validate_media_type(spec, result.content_type)
     retrieved_at = datetime.now(UTC)
     source_created_at = _source_created_at(spec, result.body)
+    key_authority_bindings = _key_authority_bindings(
+        spec,
+        result,
+        body=result.body,
+        retrieved_at=retrieved_at,
+    )
     return SourceDocument.from_bytes(
         uri=spec.uri,
         source_type=spec.source_type,
@@ -185,6 +233,8 @@ def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocume
         etag=result.etag,
         last_modified=result.last_modified,
         validation_status=ValidationStatus.VALID,
+        key_authority_bindings=key_authority_bindings,
+        acquisition=SourceAcquisition.DIRECT_HTTPS,
     )
 
 
@@ -209,4 +259,6 @@ def _revalidated_document(
         etag=result.etag or previous.metadata.etag,
         last_modified=result.last_modified or previous.metadata.last_modified,
         validation_status=ValidationStatus.VALID,
+        key_authority_bindings=previous.metadata.key_authority_bindings,
+        acquisition=previous.metadata.acquisition,
     )

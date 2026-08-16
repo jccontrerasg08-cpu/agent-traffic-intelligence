@@ -11,6 +11,8 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
+
 
 class DirectoryFormatError(ValueError):
     """Raised when a key directory cannot be safely interpreted."""
@@ -83,7 +85,7 @@ class DirectoryKey:
 @dataclass(frozen=True, slots=True)
 class KeyDirectory:
     keys: tuple[DirectoryKey, ...]
-    profile: str = "draft-meunier-http-message-signatures-directory-05"
+    profile: str = DEFAULT_STANDARDS_PROFILE.message_signatures_directory
 
     def by_id(self, key_id: str) -> DirectoryKey:
         matches = [key for key in self.keys if key.key_id == key_id]

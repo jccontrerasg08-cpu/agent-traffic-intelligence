@@ -37,6 +37,13 @@ class CryptoDiscoveryType(StrEnum):
     CIMD = "cimd"
 
 
+class CryptoResponseBindingPolicy(StrEnum):
+    """Required strength for binding cached key material to its source authority."""
+
+    STRICT_CURRENT = "strict_current"
+    DEPLOYED_COMPATIBLE = "deployed_compatible"
+
+
 @dataclass(frozen=True, slots=True)
 class RangeSourceProfile:
     uri: str
@@ -61,6 +68,7 @@ class CryptoSourceProfile:
     directory_uri: str
     interoperability_profile: CryptoInteroperabilityProfile
     discovery_type: CryptoDiscoveryType
+    response_binding_policy: CryptoResponseBindingPolicy
     binding_scope: BindingScope
     reviewed_on: str
     subject: str | None = None
@@ -176,6 +184,12 @@ def _parse_crypto(raw: Any) -> CryptoProfile | None:
                     _required_string(
                         item.get("discovery_type"),
                         "crypto discovery_type",
+                    )
+                ),
+                response_binding_policy=CryptoResponseBindingPolicy(
+                    _required_string(
+                        item.get("response_binding_policy"),
+                        "crypto response_binding_policy",
                     )
                 ),
                 binding_scope=BindingScope(
