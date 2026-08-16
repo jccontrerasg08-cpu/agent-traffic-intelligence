@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.11+, standard library `ipaddress`, `socket`, `urllib`, `hashlib`, `json`, `concurrent.futures`; current dataclass/argparse architecture; optional `http-message-signatures>=2.0.1,<3`; pytest, pytest-cov, Ruff, Mypy, Hypothesis; GitHub Actions, CodeQL, Dependabot, `actions/labeler` pinned to full SHA.
 
+> **Status update — 2026-08-16:** The V1 implementation and its V1.1 follow-on were merged through PR #8 as `b801678905cb568889ca258cfd88b4b9ad2728db`. Core and verification CI passed on Python 3.11–3.13, alongside package, CodeQL, Dependency Review, and final local validation. The historical checkboxes below remain as the original execution record; current follow-on work is defined by the post-merge evaluation roadmap.
+
 ## Global Constraints
 
 - Default `ati analyze` remains offline and V0-compatible unless `--verify-identity` is explicitly supplied.
