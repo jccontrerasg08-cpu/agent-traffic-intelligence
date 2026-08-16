@@ -8,6 +8,9 @@ from urllib.parse import urlsplit
 
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.cached_discovery import (
+    CachedDiscoveryError,
+    CachedDiscoveryStale,
+    CachedDiscoveryUnavailable,
     ResolvedSignatureAgentMaterial,
     resolve_cached_signature_agent,
 )
@@ -38,6 +41,7 @@ from agent_traffic_intelligence.identity.network.fcrdns import FcrdnsVerifier
 from agent_traffic_intelligence.identity.network.verifier import OfficialRangeVerifier
 from agent_traffic_intelligence.identity.policy import VerificationMode, VerificationPolicy
 from agent_traffic_intelligence.identity.profiles import (
+    CryptoDiscoveryType,
     CryptoSourceProfile,
     FcrdnsProfile,
     ProviderProfile,
@@ -249,6 +253,13 @@ class _CryptoAdapter:
         context: VerificationContext,
         claim: IdentityClaim,
     ) -> VerificationEvidence:
+        if self.profile.discovery_type is not CryptoDiscoveryType.DIRECTORY:
+            return self._verify_discovered_key_set(
+                event=event,
+                context=context,
+                claim=claim,
+            )
+
         document = self.cache.get(self.profile.directory_uri)
         if document is None:
             return _neutral_missing(
@@ -309,6 +320,80 @@ class _CryptoAdapter:
         bound = apply_cached_crypto_binding(
             raw,
             document=document,
+            profile=self.profile,
+            now=event.timestamp,
+        )
+        return replace(bound, authority=self.provider)
+
+    def _verify_discovered_key_set(
+        self,
+        *,
+        event: RequestEvent,
+        context: VerificationContext,
+        claim: IdentityClaim,
+    ) -> VerificationEvidence:
+        try:
+            resolved = resolve_configured_crypto_material(
+                self.profile,
+                cache=self.cache,
+                trust_policy=self.trust,
+                now=event.timestamp,
+            )
+        except CachedDiscoveryStale as exc:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.STALE,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation=str(exc),
+                source_uri=self.profile.directory_uri,
+                source_profile="runtime-cache",
+                retrieved_at=None,
+                expires_at=None,
+                source_sha256=None,
+                details={"cached": True},
+            )
+        except CachedDiscoveryUnavailable as exc:
+            return _neutral_missing(
+                method=self.method,
+                scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                source_uri=self.profile.directory_uri,
+                explanation=str(exc),
+            )
+        except (CachedDiscoveryError, ConfiguredCryptoDiscoveryError) as exc:
+            return VerificationEvidence(
+                method=self.method,
+                outcome=VerificationOutcome.ERROR,
+                binding_scope=self.binding_scope,
+                authority=self.provider,
+                subject=self.profile.subject,
+                explanation=f"cached crypto discovery could not be validated: {exc}",
+                source_uri=self.profile.directory_uri,
+                source_profile="runtime-cache",
+                retrieved_at=None,
+                expires_at=None,
+                source_sha256=None,
+                details={"cached": True},
+            )
+
+        key_document = resolved.documents[-1]
+        raw = WebBotAuthVerifier(
+            jwk_set=resolved.jwk_set,
+            key_set_uri=key_document.metadata.uri,
+            signature_agent_uri=self.profile.signature_agent_uri,
+            binding_scope=self.profile.binding_scope,
+            subject=self.profile.subject,
+            trust_policy=self.trust,
+            signature_agent_parser=StructuredFieldSignatureAgentParser(
+                profile=signature_agent_profile_for(self.profile)
+            ),
+        ).verify(context=context, claim=claim, now=event.timestamp)
+        bound = apply_cached_crypto_binding(
+            raw,
+            document=key_document,
             profile=self.profile,
             now=event.timestamp,
         )
