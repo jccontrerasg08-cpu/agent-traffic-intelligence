@@ -4,11 +4,33 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 
 class EvaluationError(ValueError):
     """Raised when an evaluation corpus does not meet ATI's minimal contract."""
+
+
+_MANIFEST_FIELDS = frozenset(
+    {
+        "schema_version",
+        "corpus_id",
+        "authorized",
+        "collection_start",
+        "collection_end",
+        "split_strategies",
+        "known_sampling_biases",
+    }
+)
+_REQUIRED_SPLIT_STRATEGIES = frozenset(
+    {
+        "grouped_session_client",
+        "temporal_holdout",
+        "unseen_family_holdout",
+        "provider_ua_ablation",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +67,64 @@ class AutomationEvaluation:
             "brier_score": self.brier_score,
             "threshold": self.threshold,
         }
+
+
+def validate_corpus_manifest(manifest: Mapping[str, Any]) -> None:
+    """Reject unapproved or leakage-prone evaluation corpus metadata."""
+
+    unexpected_fields = set(manifest) - _MANIFEST_FIELDS
+    missing_fields = _MANIFEST_FIELDS - set(manifest)
+    if unexpected_fields:
+        raise EvaluationError("corpus manifest contains unsupported fields")
+    if missing_fields:
+        raise EvaluationError("corpus manifest is missing required fields")
+    if (
+        isinstance(manifest["schema_version"], bool)
+        or manifest["schema_version"] != 1
+    ):
+        raise EvaluationError("corpus manifest schema_version must be 1")
+    if not isinstance(manifest["corpus_id"], str) or not manifest["corpus_id"].strip():
+        raise EvaluationError("corpus manifest corpus_id must be a non-empty string")
+    if manifest["authorized"] is not True:
+        raise EvaluationError("corpus manifest must explicitly be authorized")
+
+    collection_times: list[datetime] = []
+    for field in ("collection_start", "collection_end"):
+        value = manifest[field]
+        if not isinstance(value, str) or not value:
+            raise EvaluationError(f"corpus manifest {field} must be an ISO 8601 timestamp")
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise EvaluationError(
+                f"corpus manifest {field} must be an ISO 8601 timestamp"
+            ) from exc
+        if parsed.tzinfo is None:
+            raise EvaluationError(f"corpus manifest {field} must include a timezone")
+        collection_times.append(parsed)
+    if collection_times[1] <= collection_times[0]:
+        raise EvaluationError("corpus manifest collection_end must be after collection_start")
+
+    split_strategies = manifest["split_strategies"]
+    if not isinstance(split_strategies, list) or any(
+        not isinstance(item, str) for item in split_strategies
+    ):
+        raise EvaluationError("corpus manifest split_strategies must be a list of strings")
+    if (
+        len(split_strategies) != len(set(split_strategies))
+        or set(split_strategies) != _REQUIRED_SPLIT_STRATEGIES
+    ):
+        raise EvaluationError(
+            "corpus manifest split_strategies must contain each required split once"
+        )
+
+    sampling_biases = manifest["known_sampling_biases"]
+    if not isinstance(sampling_biases, list) or not sampling_biases or any(
+        not isinstance(item, str) or not item.strip() for item in sampling_biases
+    ):
+        raise EvaluationError(
+            "corpus manifest known_sampling_biases must be a non-empty list of strings"
+        )
 
 
 def _automation_score(payload: Mapping[str, Any]) -> tuple[str, float]:
