@@ -235,6 +235,7 @@ class WebBotAuthVerifier:
                 "algorithm": result.algorithm_id,
                 "directory_trusted": True,
                 "key_active": True,
+                "key_thumbprint": key.key_id,
                 "signed_authority_or_target": True,
                 "signature_agent_present": bool(references),
                 "signature_agent_bound": signature_agent_bound,
