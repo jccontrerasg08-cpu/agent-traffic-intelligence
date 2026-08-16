@@ -19,6 +19,7 @@ from agent_traffic_intelligence.identity.profiles import (
     CryptoDiscoveryType,
     CryptoInteroperabilityProfile,
     CryptoProfile,
+    CryptoResponseBindingPolicy,
     CryptoSourceProfile,
     ProviderProfile,
 )
@@ -177,6 +178,7 @@ def _cimd_source() -> CryptoSourceProfile:
         directory_uri=CIMD_URI,
         interoperability_profile=CryptoInteroperabilityProfile.IETF_HTTPSIG_PROTOCOL_01,
         discovery_type=CryptoDiscoveryType.CIMD,
+        response_binding_policy=CryptoResponseBindingPolicy.DEPLOYED_COMPATIBLE,
         binding_scope=BindingScope.AGENT,
         reviewed_on="2026-08-16",
         subject="ExampleBot",
@@ -233,6 +235,7 @@ def test_runtime_verifies_allowlisted_cached_jwks_without_network(tmp_path) -> N
         directory_uri=JWKS_URI,
         interoperability_profile=CryptoInteroperabilityProfile.IETF_HTTPSIG_PROTOCOL_01,
         discovery_type=CryptoDiscoveryType.JWKS_URI,
+        response_binding_policy=CryptoResponseBindingPolicy.DEPLOYED_COMPATIBLE,
         binding_scope=BindingScope.AGENT,
         reviewed_on="2026-08-16",
         subject="ExampleBot",
