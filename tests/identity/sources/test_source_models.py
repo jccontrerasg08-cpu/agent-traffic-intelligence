@@ -30,6 +30,11 @@ def binding() -> KeyAuthorityBinding:
     )
 
 
+def test_source_type_distinguishes_generic_jwk_set_from_strict_directory() -> None:
+    assert SourceType.JWK_SET.value == "jwk_set"
+    assert SourceType.JWK_SET is not SourceType.KEY_DIRECTORY
+
+
 def test_key_authority_binding_is_privacy_safe_and_round_trips() -> None:
     value = binding()
     payload = value.to_dict()
