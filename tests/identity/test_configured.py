@@ -42,6 +42,10 @@ from agent_traffic_intelligence.models import (
 
 NOW = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
 KEY_THUMBPRINT = "verified-key-thumbprint"
+VALID_DIRECTORY = (
+    b'{"keys":[{"kty":"OKP","crv":"Ed25519",'
+    b'"x":"JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs","use":"sig"}]}'
+)
 
 
 def event() -> RequestEvent:
@@ -133,15 +137,16 @@ def cached_crypto_document(
     *,
     acquisition: SourceAcquisition,
     with_binding: bool = False,
+    expires_at: datetime | None = None,
+    content: bytes = b'{"keys":[]}',
 ) -> SourceDocument:
-    body = b'{"keys":[]}'
     bindings: tuple[KeyAuthorityBinding, ...] = ()
     if with_binding:
         bindings = (
             KeyAuthorityBinding(
                 key_thumbprint=KEY_THUMBPRINT,
                 authority=urlsplit(source.directory_uri).netloc.casefold(),
-                body_sha256=hashlib.sha256(body).hexdigest(),
+                body_sha256=hashlib.sha256(content).hexdigest(),
                 verified_at=NOW - timedelta(minutes=5),
                 expires_at=NOW + timedelta(hours=1),
                 profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
@@ -153,7 +158,8 @@ def cached_crypto_document(
         provider="google",
         binding_scope=source.binding_scope,
         retrieved_at=NOW - timedelta(minutes=5),
-        content=body,
+        expires_at=expires_at,
+        content=content,
         content_type="application/http-message-signatures-directory+json",
         parser_profile=DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
         key_authority_bindings=bindings,
@@ -279,6 +285,44 @@ def test_redistributed_crypto_with_valid_binding_keeps_agent_identity_scope() ->
 
     assert evidence.binding_scope is BindingScope.AGENT
     assert evidence.subject == source.subject
+
+
+def test_stale_cached_crypto_directory_is_neutral_before_signature_verification(
+    tmp_path,
+) -> None:
+    source = google_crypto_source()
+    cache = SourceCache(tmp_path)
+    cache.put(
+        cached_crypto_document(
+            source,
+            acquisition=SourceAcquisition.DIRECT_HTTPS,
+            expires_at=NOW - timedelta(seconds=1),
+            content=VALID_DIRECTORY,
+        )
+    )
+    signed_context = replace(
+        context(),
+        signature="sig1=:placeholder:",
+        signature_input='sig1=("@authority");created=1',
+    )
+    google_claim = IdentityClaim(
+        provider="google",
+        agent="Google-Agent",
+        actor_type=ActorType.AI_CRAWLER,
+        intent="user-triggered",
+    )
+
+    resolution = ProviderAwareVerificationManager(cache).verify(
+        event=event(),
+        context=signed_context,
+        claim=google_claim,
+    )
+    evidence = next(
+        item for item in resolution.methods if item.method is VerificationMethod.WEB_BOT_AUTH
+    )
+
+    assert evidence.outcome is VerificationOutcome.STALE
+    assert resolution.state is VerificationState.CLAIMED
 
 
 def test_malformed_cached_directory_error_reports_current_profile(tmp_path) -> None:
