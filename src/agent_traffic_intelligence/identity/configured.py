@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import datetime
+from urllib.parse import urlsplit
 
 from agent_traffic_intelligence.identity.context import VerificationContext
 from agent_traffic_intelligence.identity.crypto.directory import (
@@ -33,6 +35,10 @@ from agent_traffic_intelligence.identity.profiles import (
     load_provider_profiles,
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
+from agent_traffic_intelligence.identity.sources.models import (
+    SourceAcquisition,
+    SourceDocument,
+)
 from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
@@ -42,6 +48,49 @@ def signature_agent_profile_for(profile: CryptoSourceProfile) -> SignatureAgentP
     """Map a validated declarative crypto source to its parser profile."""
 
     return SignatureAgentProfile(profile.interoperability_profile.value)
+
+
+def apply_cached_crypto_binding(
+    evidence: VerificationEvidence,
+    *,
+    document: SourceDocument,
+    profile: CryptoSourceProfile,
+    now: datetime,
+) -> VerificationEvidence:
+    """Constrain crypto identity scope to what cached source provenance proves."""
+
+    if evidence.outcome is not VerificationOutcome.PASS:
+        return evidence
+    if evidence.binding_scope is BindingScope.KEY:
+        return evidence
+    if document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS:
+        return evidence
+
+    thumbprint = evidence.details.get("key_thumbprint")
+    expected_authority = urlsplit(profile.directory_uri).netloc.casefold()
+    if isinstance(thumbprint, str) and thumbprint and expected_authority:
+        for binding in document.metadata.key_authority_bindings:
+            if binding.key_thumbprint != thumbprint:
+                continue
+            if binding.authority.casefold() != expected_authority:
+                continue
+            if binding.body_sha256 != document.metadata.sha256:
+                continue
+            if binding.verified_at > now:
+                continue
+            if binding.expires_at is None or binding.expires_at < now:
+                continue
+            return evidence
+
+    return replace(
+        evidence,
+        binding_scope=BindingScope.KEY,
+        subject=thumbprint if isinstance(thumbprint, str) and thumbprint else None,
+        explanation=(
+            f"{evidence.explanation}; cached key material has no current "
+            "Signature-Agent URL authority binding"
+        ),
+    )
 
 
 @dataclass(slots=True)
@@ -176,7 +225,13 @@ class _CryptoAdapter:
                 profile=signature_agent_profile_for(self.profile)
             ),
         ).verify(context=context, claim=claim, now=event.timestamp)
-        return replace(raw, authority=self.provider)
+        bound = apply_cached_crypto_binding(
+            raw,
+            document=document,
+            profile=self.profile,
+            now=event.timestamp,
+        )
+        return replace(bound, authority=self.provider)
 
 
 class ProviderAwareVerificationManager(VerificationManager):
