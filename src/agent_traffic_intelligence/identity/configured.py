@@ -7,12 +7,22 @@ from datetime import datetime
 from urllib.parse import urlsplit
 
 from agent_traffic_intelligence.identity.context import VerificationContext
+from agent_traffic_intelligence.identity.crypto.cached_discovery import (
+    ResolvedSignatureAgentMaterial,
+    resolve_cached_signature_agent,
+)
 from agent_traffic_intelligence.identity.crypto.directory import (
     DirectoryFormatError,
     parse_key_directory,
 )
+from agent_traffic_intelligence.identity.crypto.discovery import (
+    SignatureAgentResolutionError,
+    plan_signature_agent_resolution,
+)
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
+    SignatureAgentDiscoveryType,
     SignatureAgentProfile,
+    SignatureAgentReference,
     StructuredFieldSignatureAgentParser,
 )
 from agent_traffic_intelligence.identity.crypto.web_bot_auth import WebBotAuthVerifier
@@ -39,15 +49,64 @@ from agent_traffic_intelligence.identity.sources.models import (
     SourceAcquisition,
     SourceDocument,
 )
-from agent_traffic_intelligence.identity.sources.trust import SourceTrustPolicy
+from agent_traffic_intelligence.identity.sources.trust import (
+    SourceTrustPolicy,
+    canonicalize_source_uri,
+)
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 from agent_traffic_intelligence.models import IdentityClaim, RequestEvent
+
+
+class ConfiguredCryptoDiscoveryError(ValueError):
+    """A declarative crypto profile is inconsistent with its discovery contract."""
 
 
 def signature_agent_profile_for(profile: CryptoSourceProfile) -> SignatureAgentProfile:
     """Map a validated declarative crypto source to its parser profile."""
 
     return SignatureAgentProfile(profile.interoperability_profile.value)
+
+
+def configured_signature_agent_reference(
+    profile: CryptoSourceProfile,
+) -> SignatureAgentReference:
+    """Build the protocol reference represented by one declarative crypto source."""
+
+    return SignatureAgentReference(
+        label=None,
+        uri=profile.signature_agent_uri,
+        discovery_type=SignatureAgentDiscoveryType(profile.discovery_type.value),
+        legacy=signature_agent_profile_for(profile) is SignatureAgentProfile.CLOUDFLARE_LEGACY,
+    )
+
+
+def resolve_configured_crypto_material(
+    profile: CryptoSourceProfile,
+    *,
+    cache: SourceCache,
+    trust_policy: SourceTrustPolicy,
+    now: datetime,
+) -> ResolvedSignatureAgentMaterial:
+    """Resolve one configured crypto source from allowlisted local cache only."""
+
+    reference = configured_signature_agent_reference(profile)
+    try:
+        target = plan_signature_agent_resolution(reference)
+        declared_fetch_uri = canonicalize_source_uri(profile.directory_uri)
+    except (SignatureAgentResolutionError, ValueError) as exc:
+        raise ConfiguredCryptoDiscoveryError(
+            "configured crypto discovery has an invalid fetch URI"
+        ) from exc
+    if declared_fetch_uri != target.fetch_uri:
+        raise ConfiguredCryptoDiscoveryError(
+            "configured crypto fetch URI does not match the Signature-Agent discovery target"
+        )
+    return resolve_cached_signature_agent(
+        reference,
+        cache=cache,
+        trust_policy=trust_policy,
+        now=now,
+    )
 
 
 def apply_cached_crypto_binding(
