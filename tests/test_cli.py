@@ -175,6 +175,56 @@ def test_evaluate_reports_local_automation_metrics(tmp_path, capsys) -> None:
     assert result["evaluated_request_count"] == 2
 
 
+def test_evaluate_rejects_oversized_detection_line(tmp_path, capsys) -> None:
+    detections_path = tmp_path / "detections.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    detections_path.write_text(
+        json.dumps(
+            {
+                "request_id": "a",
+                "automation_score": 0.9,
+                "padding": "x" * 1_000_000,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        json.dumps({"request_id": "a", "automated": True}) + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(["evaluate", str(detections_path), "--labels", str(labels_path)])
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
+def test_evaluate_rejects_oversized_label_line(tmp_path, capsys) -> None:
+    detections_path = tmp_path / "detections.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    detections_path.write_text(
+        json.dumps({"request_id": "a", "automation_score": 0.9}) + "\n",
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        json.dumps(
+            {
+                "request_id": "a",
+                "automated": True,
+                "padding": "x" * 1_000_000,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(["evaluate", str(detections_path), "--labels", str(labels_path)])
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
 def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     code = main(["registry", "validate"])
 
