@@ -63,7 +63,10 @@ def apply_cached_crypto_binding(
         return evidence
     if evidence.binding_scope is BindingScope.KEY:
         return evidence
-    if document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS:
+    if (
+        document.metadata.acquisition is SourceAcquisition.DIRECT_HTTPS
+        and document.metadata.retrieved_at <= now
+    ):
         return evidence
 
     thumbprint = evidence.details.get("key_thumbprint")
