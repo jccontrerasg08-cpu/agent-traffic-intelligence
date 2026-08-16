@@ -14,6 +14,7 @@ from agent_traffic_intelligence.identity.models import BindingScope
 class SourceType(StrEnum):
     IP_RANGES = "ip_ranges"
     KEY_DIRECTORY = "key_directory"
+    JWK_SET = "jwk_set"
     AGENT_CARD = "agent_card"
     STANDARD_PROFILE = "standard_profile"
 
