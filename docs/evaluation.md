@@ -2,7 +2,7 @@
 
 ## Labels
 
-Maintain both `label` and `label_confidence`/`label_source`.
+Maintain both `label` and `label_confidence`/`label_source`. When running the optional manifest-gated evaluation path, each JSONL label must use `automated`, `label_source`, and numeric `label_confidence` in `[0, 1]`.
 
 Strong labels can come from controlled traffic generation or verifiable provider identity. User-Agent-only labels are weak because they are spoofable.
 
@@ -63,3 +63,30 @@ The output contains the confusion matrix, precision, recall, F1, accuracy, Brier
 ## Corpus handling
 
 Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
+
+## Authorized corpus manifest
+
+Use `--manifest` when results are intended to inform a benchmark, threshold, or future learned-detection decision. The manifest is one local JSON object and contains metadata only—never traffic records, raw identifiers, or label content. ATI requires the following exact fields:
+
+```json
+{
+  "schema_version": 1,
+  "corpus_id": "owned-shadow-2026-08",
+  "authorized": true,
+  "collection_start": "2026-08-01T00:00:00Z",
+  "collection_end": "2026-08-02T00:00:00Z",
+  "split_strategies": [
+    "grouped_session_client",
+    "temporal_holdout",
+    "unseen_family_holdout",
+    "provider_ua_ablation"
+  ],
+  "known_sampling_biases": ["controlled-traffic-overrepresentation"]
+}
+```
+
+The validator rejects unauthorized corpora, unknown manifest fields, missing leakage-control strategies, duplicate strategies, timezone-free or invalid collection windows, and missing sampling-bias disclosure. This does not train, calibrate, or retain a model; it establishes evidence prerequisites only.
+
+```bash
+ati evaluate detections.jsonl --labels labels.jsonl --manifest corpus-manifest.json --threshold 0.5
+```

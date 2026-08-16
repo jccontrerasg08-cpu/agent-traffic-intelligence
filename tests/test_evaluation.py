@@ -1,6 +1,10 @@
 import pytest
 
-from agent_traffic_intelligence.evaluation import EvaluationError, evaluate_automation_scores
+from agent_traffic_intelligence.evaluation import (
+    EvaluationError,
+    evaluate_automation_scores,
+    validate_corpus_manifest,
+)
 
 
 def detection(request_id: str, score: float) -> dict[str, object]:
@@ -8,6 +12,23 @@ def detection(request_id: str, score: float) -> dict[str, object]:
         "schema_version": 1,
         "request_id": request_id,
         "automation_score": score,
+    }
+
+
+def manifest() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "corpus_id": "owned-shadow-2026-08",
+        "authorized": True,
+        "collection_start": "2026-08-01T00:00:00Z",
+        "collection_end": "2026-08-02T00:00:00Z",
+        "split_strategies": [
+            "grouped_session_client",
+            "temporal_holdout",
+            "unseen_family_holdout",
+            "provider_ua_ablation",
+        ],
+        "known_sampling_biases": ["controlled-traffic-overrepresentation"],
     }
 
 
@@ -54,3 +75,34 @@ def test_evaluation_rejects_malformed_detection_payload() -> None:
 def test_evaluation_rejects_label_with_empty_request_id() -> None:
     with pytest.raises(EvaluationError, match="label request_id"):
         evaluate_automation_scores([], {"": True})
+
+
+def test_corpus_manifest_requires_authorization_leakage_splits_and_biases() -> None:
+    validate_corpus_manifest(manifest())
+
+    missing_split = manifest()
+    missing_split["split_strategies"] = ["grouped_session_client"]
+    with pytest.raises(EvaluationError, match="split_strategies"):
+        validate_corpus_manifest(missing_split)
+
+    unauthorized = manifest()
+    unauthorized["authorized"] = False
+    with pytest.raises(EvaluationError, match="authorized"):
+        validate_corpus_manifest(unauthorized)
+
+    invalid_version = manifest()
+    invalid_version["schema_version"] = True
+    with pytest.raises(EvaluationError, match="schema_version"):
+        validate_corpus_manifest(invalid_version)
+
+
+def test_corpus_manifest_rejects_unknown_fields_and_invalid_collection_window() -> None:
+    unknown = manifest()
+    unknown["raw_ip_address"] = "203.0.113.9"
+    with pytest.raises(EvaluationError, match="unsupported fields"):
+        validate_corpus_manifest(unknown)
+
+    invalid_window = manifest()
+    invalid_window["collection_end"] = "2026-08-01T00:00:00Z"
+    with pytest.raises(EvaluationError, match="collection_end"):
+        validate_corpus_manifest(invalid_window)

@@ -175,6 +175,79 @@ def test_evaluate_reports_local_automation_metrics(tmp_path, capsys) -> None:
     assert result["evaluated_request_count"] == 2
 
 
+def test_evaluate_manifest_requires_label_provenance(tmp_path, capsys) -> None:
+    detections_path = tmp_path / "detections.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    manifest_path = tmp_path / "manifest.json"
+    detections_path.write_text(
+        json.dumps({"request_id": "a", "automation_score": 0.9}) + "\n",
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "corpus_id": "owned-shadow-2026-08",
+                "authorized": True,
+                "collection_start": "2026-08-01T00:00:00Z",
+                "collection_end": "2026-08-02T00:00:00Z",
+                "split_strategies": [
+                    "grouped_session_client",
+                    "temporal_holdout",
+                    "unseen_family_holdout",
+                    "provider_ua_ablation",
+                ],
+                "known_sampling_biases": ["controlled-traffic-overrepresentation"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    labels_path.write_text(
+        json.dumps({"request_id": "a", "automated": True}) + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "evaluate",
+            str(detections_path),
+            "--labels",
+            str(labels_path),
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
+
+    assert code == 2
+    assert "label_source" in capsys.readouterr().err
+
+    labels_path.write_text(
+        json.dumps(
+            {
+                "request_id": "a",
+                "automated": True,
+                "label_source": "controlled-generator",
+                "label_confidence": 1.0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    code = main(
+        [
+            "evaluate",
+            str(detections_path),
+            "--labels",
+            str(labels_path),
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["evaluated_request_count"] == 1
+
+
 def test_evaluate_rejects_oversized_detection_line(tmp_path, capsys) -> None:
     detections_path = tmp_path / "detections.jsonl"
     labels_path = tmp_path / "labels.jsonl"
