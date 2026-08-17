@@ -78,6 +78,12 @@ def _parser() -> argparse.ArgumentParser:
     explain = subparsers.add_parser("explain", help="Pretty-print one detection and its evidence.")
     explain.add_argument("input", help="Detection JSONL file.")
     explain.add_argument("--request-id", required=True, help="Request identifier to explain.")
+    explain.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
 
     evaluate = subparsers.add_parser(
         "evaluate",
@@ -556,6 +562,12 @@ def _explain(args: argparse.Namespace) -> int:
     try:
         with path.open("r", encoding="utf-8") as stream:
             for line_number, line in enumerate(stream, start=1):
+                if len(line) > args.max_line_characters:
+                    print(
+                        f"error: line {line_number}: exceeds configured character limit",
+                        file=sys.stderr,
+                    )
+                    return 2
                 if not line.strip():
                     continue
                 try:

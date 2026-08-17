@@ -66,6 +66,21 @@ def test_iter_jsonl_reports_line_number_for_malformed_json() -> None:
         next(iterator)
 
 
+def test_normalizer_rejects_invalid_status_and_byte_ranges() -> None:
+    invalid_status = base_record()
+    invalid_status["status"] = 99
+    with pytest.raises(ParseError, match="valid HTTP status"):
+        normalize_record(invalid_status, hash_key=b"key")
+
+    invalid_bytes = base_record()
+    invalid_bytes["body_bytes_sent"] = -1
+    with pytest.raises(ParseError, match="non-negative"):
+        normalize_record(invalid_bytes, hash_key=b"key")
+
+    with pytest.raises(ParseError, match=r"line 1: .*valid HTTP status"):
+        next(iter_jsonl(StringIO(json.dumps(invalid_status)), hash_key=b"key"))
+
+
 def test_normalizer_rejects_naive_timestamp() -> None:
     record = base_record()
     record["time_iso8601"] = "2026-08-14T08:00:00"

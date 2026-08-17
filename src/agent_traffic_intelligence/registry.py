@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from agent_traffic_intelligence.models import ActorType, IdentityClaim, VerificationState
+
+_USER_AGENT_TOKEN_CHARACTER = r"[a-z0-9!#$%&'*+\-.^_`|~]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,16 +28,25 @@ class RegistryEntry:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> RegistryEntry:
+        token = value["token"]
+        if not isinstance(token, str) or not token.strip():
+            raise ValueError("registry token must be a non-empty string")
+        if token != token.strip():
+            raise ValueError("registry token must not have surrounding whitespace")
+        ai_related = value["ai_related"]
+        deprecated = value.get("deprecated", False)
+        if not isinstance(ai_related, bool) or not isinstance(deprecated, bool):
+            raise ValueError("registry ai_related and deprecated fields must be booleans")
         return cls(
-            token=str(value["token"]),
+            token=token,
             provider=str(value["provider"]),
             agent=str(value["agent"]),
             actor_type=ActorType(str(value["actor_type"])),
             intent=str(value["intent"]),
-            ai_related=bool(value["ai_related"]),
+            ai_related=ai_related,
             official_source=str(value["official_source"]),
             last_verified=str(value["last_verified"]),
-            deprecated=bool(value.get("deprecated", False)),
+            deprecated=deprecated,
             supported_until=(
                 str(value["supported_until"]) if value.get("supported_until") else None
             ),
@@ -64,6 +76,8 @@ class AgentRegistry:
         raw_entries = raw.get("entries")
         if not isinstance(raw_entries, list):
             raise ValueError("registry entries must be a list")
+        if not all(isinstance(item, dict) for item in raw_entries):
+            raise ValueError("registry entries must be JSON objects")
         entries = tuple(RegistryEntry.from_dict(item) for item in raw_entries)
         return cls(entries)
 
@@ -75,7 +89,16 @@ class AgentRegistry:
         if not user_agent:
             return None
         folded = user_agent.casefold()
-        matches = [entry for entry in self._entries if entry.token.casefold() in folded]
+        matches = [
+            entry
+            for entry in self._entries
+            if re.search(
+                rf"(?<!{_USER_AGENT_TOKEN_CHARACTER})"
+                rf"{re.escape(entry.token.casefold())}"
+                rf"(?!{_USER_AGENT_TOKEN_CHARACTER})",
+                folded,
+            )
+        ]
         if not matches:
             return None
         # Prefer the longest token so specific identities win over future generic aliases.

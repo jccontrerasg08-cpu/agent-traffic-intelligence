@@ -29,6 +29,15 @@ def test_canonicalizer_normalizes_host_default_port_and_empty_path() -> None:
     )
 
 
+def test_canonicalizer_normalizes_equivalent_paths_and_unreserved_encoding() -> None:
+    canonical = canonicalize_source_uri("https://example.com/data.json")
+
+    assert canonicalize_source_uri("https://EXAMPLE.com:443/a/../data%2Ejson") == canonical
+    assert SourceTrustPolicy(frozenset({canonical})).allows(
+        "https://example.com/a/../data%2Ejson"
+    )
+
+
 def test_canonicalizer_rejects_credentials_non_https_and_missing_host() -> None:
     with pytest.raises(ValueError, match="https"):
         canonicalize_source_uri("http://example.com/data.json")

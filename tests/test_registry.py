@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from agent_traffic_intelligence.models import ActorType, VerificationState
 from agent_traffic_intelligence.registry import AgentRegistry
 
@@ -45,6 +49,52 @@ def test_google_extended_is_not_misclassified_as_http_user_agent() -> None:
 def test_unknown_user_agent_remains_unknown() -> None:
     registry = AgentRegistry.default()
     assert registry.match("MyPrivateCrawler/0.1") is None
+
+
+def _registry_entry(**overrides: object) -> dict[str, object]:
+    return {
+        "token": "GPTBot",
+        "provider": "openai",
+        "agent": "GPTBot",
+        "actor_type": "ai-crawler",
+        "intent": "training-crawl",
+        "ai_related": True,
+        "official_source": "https://example.com/agent",
+        "last_verified": "2026-08-14",
+        **overrides,
+    }
+
+
+def test_registry_rejects_empty_tokens_and_non_boolean_metadata(tmp_path) -> None:
+    for entry in (
+        _registry_entry(token=""),
+        _registry_entry(ai_related="false"),
+        _registry_entry(deprecated="false"),
+    ):
+        path = tmp_path / "agents.json"
+        path.write_text(json.dumps({"schema_version": 1, "entries": [entry]}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            AgentRegistry.from_path(path)
+
+
+def test_registry_rejects_non_object_entries(tmp_path) -> None:
+    path = tmp_path / "agents.json"
+    path.write_text(
+        json.dumps({"schema_version": 1, "entries": [None]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="objects"):
+        AgentRegistry.from_path(path)
+
+
+def test_registry_does_not_match_embedded_agent_tokens() -> None:
+    registry = AgentRegistry.default()
+
+    assert registry.match("NotGPTBot/1.0") is None
+    assert registry.match("x-GPTBot/1.0") is None
+    assert registry.match("xGPTBotx/1.0") is None
+    assert registry.match("GPTBot/1.0") is not None
 
 
 def test_registry_sources_are_auditable() -> None:

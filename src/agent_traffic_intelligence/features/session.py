@@ -48,11 +48,15 @@ class SessionFeatureState:
                 self._histories.popitem(last=False)
                 self._evicted_clients += 1
             history = deque(maxlen=self._max_events)
-        history.append(_Observation(event=event, is_asset=is_asset_path(event.path)))
-
-        cutoff = event.timestamp - self._window
-        while history and history[0].event.timestamp < cutoff:
-            history.popleft()
+        observation = _Observation(event=event, is_asset=is_asset_path(event.path))
+        # ponytail: histories are capped at max_events_per_client (128 by default),
+        # so sorting on each update keeps late log arrivals correct without a new index.
+        ordered = sorted((*history, observation), key=lambda item: item.event.timestamp)
+        cutoff = ordered[-1].event.timestamp - self._window
+        history = deque(
+            (item for item in ordered if item.event.timestamp >= cutoff),
+            maxlen=self._max_events,
+        )
         self._histories[event.client_id] = history
 
         return self._snapshot(history)
