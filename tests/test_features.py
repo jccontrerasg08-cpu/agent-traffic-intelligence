@@ -63,6 +63,18 @@ def test_session_features_capture_rate_regularity_and_ratios() -> None:
     assert snapshot["path_entropy_bits"] == 2.0
 
 
+def test_session_features_order_out_of_order_arrivals_by_timestamp() -> None:
+    state = SessionFeatureState(max_events_per_client=8, window_seconds=300)
+    for sample in (event(0, "/a"), event(20, "/c"), event(10, "/b")):
+        snapshot = state.update(sample)
+
+    assert snapshot["session_request_count"] == 3
+    assert snapshot["session_duration_seconds"] == 20.0
+    assert snapshot["mean_interarrival_seconds"] == 10.0
+    assert snapshot["interarrival_cv"] == 0.0
+    assert snapshot["requests_per_minute"] == pytest.approx(9.0)
+
+
 def test_session_state_is_bounded_per_client() -> None:
     state = SessionFeatureState(max_events_per_client=3, window_seconds=300)
     for second in (0, 10, 20, 30):

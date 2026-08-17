@@ -505,6 +505,28 @@ def test_registry_validate_reports_curated_entry_count(capsys) -> None:
     assert "entries=11" in output
 
 
+def test_explain_rejects_oversized_detection_lines(tmp_path, capsys) -> None:
+    input_path = tmp_path / "detections.jsonl"
+    input_path.write_text(
+        json.dumps({"request_id": "target", "padding": "x" * 64}) + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "explain",
+            str(input_path),
+            "--request-id",
+            "target",
+            "--max-line-characters",
+            "10",
+        ]
+    )
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
 def test_explain_pretty_prints_evidence(tmp_path, monkeypatch, capsys) -> None:
     input_path = tmp_path / "access.jsonl"
     output_path = tmp_path / "detections.jsonl"

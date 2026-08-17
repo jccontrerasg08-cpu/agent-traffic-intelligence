@@ -122,6 +122,10 @@ def normalize_record(
         bytes_sent = int(record.get("bytes_sent", record.get("body_bytes_sent", 0)) or 0)
     except (TypeError, ValueError) as exc:
         raise ParseError("status and bytes fields must be integers") from exc
+    if not 100 <= status <= 599:
+        raise ParseError("status must be a valid HTTP status")
+    if bytes_sent < 0:
+        raise ParseError("bytes_sent must be non-negative")
 
     supplied_client = record.get("client_id")
     if isinstance(supplied_client, str) and supplied_client:
