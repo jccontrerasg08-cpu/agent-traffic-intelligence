@@ -427,6 +427,10 @@ def test_run_creates_an_atomic_privacy_safe_local_artifact_directory(
     assert run["artifacts"]["evaluation"] == "evaluation.json"
     evaluation = json.loads((run_dir / "evaluation.json").read_text(encoding="utf-8"))
     assert evaluation["evaluated_request_count"] == 2
+    summary = (run_dir / "summary.md").read_text(encoding="utf-8")
+    assert "Quality status: `ready`" in summary
+    assert "Unlabeled detections: `0`" in summary
+    assert "Unmatched labels: `0`" in summary
     serialized = "".join(
         path.read_text(encoding="utf-8") for path in run_dir.iterdir() if path.is_file()
     )
@@ -434,6 +438,39 @@ def test_run_creates_an_atomic_privacy_safe_local_artifact_directory(
     assert "never-log-this" not in serialized
     assert "do-not-log" not in serialized
     assert "processed=2" in capsys.readouterr().err
+
+    labels_path.write_text(
+        json.dumps(
+            {
+                "request_id": request_ids[0],
+                "automated": True,
+                "label_source": "controlled-generator",
+                "label_confidence": 1.0,
+                "corpus_id": "owned-shadow-2026-08",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    review_run_dir = tmp_path / "review-required"
+    assert (
+        main(
+            [
+                "run",
+                str(input_path),
+                "--run-dir",
+                str(review_run_dir),
+                "--labels",
+                str(labels_path),
+                "--manifest",
+                str(manifest_path),
+            ]
+        )
+        == 0
+    )
+    assert "Quality status: `review-required`" in (review_run_dir / "summary.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_run_refuses_to_overwrite_an_existing_artifact_directory(tmp_path, capsys) -> None:
