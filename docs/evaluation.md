@@ -110,3 +110,5 @@ ATI_HASH_KEY="local-secret" ati run access.jsonl \
 The directory contains `detections.jsonl`, `evaluation.json`, `run.json`, and `summary.md`. It intentionally does **not** copy the raw access log, labels, or corpus manifest; those remain user-owned local inputs. `run.json` records only the ATI version, approved `corpus_id`, non-sensitive analysis options, and fixed artifact names. ATI refuses to overwrite an existing run directory.
 
 > This is a local reproducibility convention, not a database, dashboard, telemetry service, or model-training workflow.
+
+`summary.md` also reports a deterministic **quality status** from the existing evaluation coverage signals. It is `ready` only when at least one detection was evaluated and both `unlabeled_request_count` and `unmatched_label_count` are zero. Otherwise it is `review-required`; investigate the counts in `evaluation.json` before cleaning, comparing, or modeling the corpus. The status does not validate raw-log completeness, remove records, or certify that labels are correct.

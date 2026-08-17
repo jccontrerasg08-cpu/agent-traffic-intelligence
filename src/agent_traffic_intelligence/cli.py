@@ -471,13 +471,29 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
         stream.write("\n")
 
 
-def _run_summary(run: dict[str, object]) -> str:
+def _quality_status(evaluation: Mapping[str, int | float]) -> str:
+    if (
+        evaluation["evaluated_request_count"]
+        and not evaluation["unlabeled_request_count"]
+        and not evaluation["unmatched_label_count"]
+    ):
+        return "ready"
+    return "review-required"
+
+
+def _run_summary(
+    run: dict[str, object], evaluation: Mapping[str, int | float]
+) -> str:
     artifacts = run["artifacts"]
     assert isinstance(artifacts, dict)
     return (
         "# ATI local run\n\n"
         f"- Tool version: `{run['tool_version']}`\n"
         f"- Corpus ID: `{run['corpus_id']}`\n"
+        f"- Quality status: `{_quality_status(evaluation)}`\n"
+        f"- Evaluated detections: `{evaluation['evaluated_request_count']}`\n"
+        f"- Unlabeled detections: `{evaluation['unlabeled_request_count']}`\n"
+        f"- Unmatched labels: `{evaluation['unmatched_label_count']}`\n"
         f"- Detections: `{artifacts['detections']}`\n"
         f"- Evaluation: `{artifacts['evaluation']}`\n"
     )
@@ -523,7 +539,7 @@ def _run(args: argparse.Namespace) -> int:
         _write_json(staging / "evaluation.json", evaluation)
         _write_json(staging / "run.json", run)
         with _atomic_output(staging / "summary.md") as stream:
-            stream.write(_run_summary(run))
+            stream.write(_run_summary(run, evaluation))
         os.replace(staging, run_dir)
     except (EvaluationError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
