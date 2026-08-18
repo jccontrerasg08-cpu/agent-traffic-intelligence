@@ -73,6 +73,11 @@ class DirectoryKey:
         ):
             raise DirectoryFormatError("directory key exp must be later than nbf")
 
+    @property
+    def thumbprint(self) -> str:
+        """Return the RFC 7638 identifier derived from this public JWK."""
+        return jwk_thumbprint(self.jwk)
+
     def active_at(self, when: datetime) -> bool:
         if when.tzinfo is None or when.utcoffset() is None:
             raise ValueError("key activity time must be timezone-aware")
@@ -110,8 +115,8 @@ def _parse_key(raw: Any) -> DirectoryKey:
         raise DirectoryFormatError("key directories must not expose private JWK material")
     thumbprint = jwk_thumbprint(raw)
     kid = raw.get("kid")
-    if kid is not None and kid != thumbprint:
-        raise DirectoryFormatError("JWK kid must equal its RFC 7638 thumbprint")
+    if kid is not None and (not isinstance(kid, str) or not kid):
+        raise DirectoryFormatError("JWK kid must be a non-empty string when present")
     alg = raw.get("alg")
     if alg is not None and not isinstance(alg, str):
         raise DirectoryFormatError("JWK alg must be a string when present")
@@ -119,7 +124,7 @@ def _parse_key(raw: Any) -> DirectoryKey:
     if use is not None and not isinstance(use, str):
         raise DirectoryFormatError("JWK use must be a string when present")
     return DirectoryKey(
-        key_id=thumbprint,
+        key_id=kid or thumbprint,
         kty=str(raw["kty"]),
         alg=alg,
         use=use,
@@ -148,7 +153,10 @@ def parse_key_directory(payload: bytes | str | Mapping[str, Any]) -> KeyDirector
     if not isinstance(raw_keys, list):
         raise DirectoryFormatError("directory keys must be an array")
     keys = tuple(_parse_key(item) for item in raw_keys)
-    ids = [key.key_id for key in keys]
-    if len(ids) != len(set(ids)):
+    key_ids = [key.key_id for key in keys]
+    if len(key_ids) != len(set(key_ids)):
+        raise DirectoryFormatError("directory contains duplicate key identifiers")
+    thumbprints = [key.thumbprint for key in keys]
+    if len(thumbprints) != len(set(thumbprints)):
         raise DirectoryFormatError("directory contains duplicate JWK thumbprints")
     return KeyDirectory(keys=keys)

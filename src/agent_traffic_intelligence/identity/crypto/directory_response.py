@@ -93,7 +93,7 @@ class DirectoryResponseVerifier:
                     continue
                 bindings.append(
                     KeyAuthorityBinding(
-                        key_thumbprint=key.key_id,
+                        key_thumbprint=key.thumbprint,
                         authority=authority,
                         body_sha256=body_sha256,
                         verified_at=now,
