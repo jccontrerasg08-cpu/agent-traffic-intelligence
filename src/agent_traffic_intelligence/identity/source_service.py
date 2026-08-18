@@ -116,10 +116,19 @@ def refresh_sources(
     provider: str | None = None,
     fetcher: SafeFetcher | None = None,
 ) -> tuple[int, int]:
+    specs = configured_sources()
+    if provider is not None and not any(
+        spec.provider.casefold() == provider.casefold() for spec in specs
+    ):
+        known_providers = ", ".join(sorted({spec.provider for spec in specs}))
+        raise ValueError(
+            f"unknown configured provider: {provider}; expected one of: {known_providers}"
+        )
+
     client = fetcher or SafeFetcher()
     refreshed = 0
     not_modified = 0
-    for spec in configured_sources():
+    for spec in specs:
         if provider is not None and spec.provider.casefold() != provider.casefold():
             continue
         previous = cache.get(spec.uri)
