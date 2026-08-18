@@ -29,4 +29,5 @@ def test_source_health_keeps_read_only_repository_permissions() -> None:
 def test_source_health_checks_datatracker_standards_drift() -> None:
     workflow = workflow_text()
 
-    assert "ati standards health" in workflow
+    assert "PYTHONPATH: src" in workflow
+    assert "python -m agent_traffic_intelligence.cli standards health" in workflow
