@@ -81,3 +81,10 @@ def test_sources_refresh_is_explicit_and_provider_scoped(tmp_path: Path, monkeyp
     monkeypatch.setattr(cli, "refresh_sources", fake_refresh)
     assert cli.main(["sources", "refresh", "--provider", "openai"]) == 0
     assert captured["provider"] == "openai"
+
+
+def test_sources_refresh_rejects_unknown_provider(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("ATI_SOURCE_CACHE", str(tmp_path / "cache"))
+
+    assert cli.main(["sources", "refresh", "--provider", "not-a-provider"]) == 2
+    assert "unknown configured provider: not-a-provider" in capsys.readouterr().err
