@@ -40,9 +40,13 @@ def test_directory_rejects_private_material_and_bad_metadata() -> None:
     with pytest.raises(DirectoryFormatError, match="private"):
         parse_key_directory({"keys": [private]})
 
-    mismatched_kid = {**okp_jwk(), "kid": "not-the-thumbprint"}
-    with pytest.raises(DirectoryFormatError, match="thumbprint"):
-        parse_key_directory({"keys": [mismatched_kid]})
+    opaque_kid = {**okp_jwk(), "kid": "operator-directory-key"}
+    parsed = parse_key_directory({"keys": [opaque_kid]})
+    assert parsed.keys[0].key_id == "operator-directory-key"
+    assert parsed.keys[0].thumbprint == jwk_thumbprint(opaque_kid)
+
+    with pytest.raises(DirectoryFormatError, match="kid"):
+        parse_key_directory({"keys": [{**okp_jwk(), "kid": 1}]})
 
     with pytest.raises(DirectoryFormatError, match="alg"):
         parse_key_directory({"keys": [{**okp_jwk(), "alg": 1}]})
@@ -85,6 +89,13 @@ def test_directory_parsing_rejects_invalid_shapes_and_duplicates() -> None:
         parse_key_directory({"keys": ["not-an-object"]})
     with pytest.raises(DirectoryFormatError, match="duplicate"):
         parse_key_directory({"keys": [okp_jwk(), okp_jwk()]})
+
+    duplicate_kids = [
+        {**okp_jwk(), "kid": "operator-key"},
+        {**okp_jwk(), "x": "other-public-key", "kid": "operator-key"},
+    ]
+    with pytest.raises(DirectoryFormatError, match="key identifiers"):
+        parse_key_directory({"keys": duplicate_kids})
 
 
 def test_directory_lookup_requires_exactly_one_key() -> None:

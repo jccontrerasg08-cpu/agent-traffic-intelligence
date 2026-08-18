@@ -145,7 +145,11 @@ class DirectoryKeyResolver:
         return self.private_key.public_key()
 
 
-def _signed_directory_fetch_result(spec: SourceSpec) -> tuple[FetchResult, str]:
+def _signed_directory_fetch_result(
+    spec: SourceSpec,
+    *,
+    published_kid: str | None = None,
+) -> tuple[FetchResult, str]:
     hms = pytest.importorskip("http_message_signatures")
     algorithms = pytest.importorskip("http_message_signatures.algorithms")
     ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
@@ -163,7 +167,7 @@ def _signed_directory_fetch_result(spec: SourceSpec) -> tuple[FetchResult, str]:
         "use": "sig",
     }
     key_id = jwk_thumbprint(raw_key)
-    raw_key["kid"] = key_id
+    raw_key["kid"] = published_kid or key_id
     body = json.dumps(
         {"keys": [raw_key]},
         separators=(",", ":"),
@@ -172,7 +176,7 @@ def _signed_directory_fetch_result(spec: SourceSpec) -> tuple[FetchResult, str]:
 
     sf = structured_fields_module()
     content_digest = str(sf.Dictionary({"sha-256": hashlib.sha256(body).digest()}))
-    resolver = DirectoryKeyResolver(key_id, private_key)
+    resolver = DirectoryKeyResolver(str(raw_key["kid"]), private_key)
     request = MutableRequest(method="GET", url=spec.uri, headers={})
     response = MutableResponse(
         status_code=200,
@@ -188,7 +192,7 @@ def _signed_directory_fetch_result(spec: SourceSpec) -> tuple[FetchResult, str]:
     now = datetime.now()
     signer.sign(
         response,
-        key_id=key_id,
+        key_id=str(raw_key["kid"]),
         covered_component_ids=('"@authority";req', "content-digest"),
         created=now,
         expires=now + timedelta(minutes=5),
@@ -320,6 +324,26 @@ def test_signed_directory_refresh_caches_only_derived_authority_binding(
     assert "signature" not in metadata
     assert "signature_input" not in metadata
     assert "content_digest" not in metadata
+
+
+def test_signed_directory_refresh_accepts_an_opaque_kid_and_binds_thumbprint(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    spec = directory_spec()
+    monkeypatch.setattr(service, "configured_sources", lambda: (spec,))
+    result, thumbprint = _signed_directory_fetch_result(
+        spec,
+        published_kid="google-directory-key-1",
+    )
+    cache = SourceCache(tmp_path)
+
+    refreshed, not_modified = refresh_sources(cache, fetcher=FakeFetcher([result]))
+
+    assert (refreshed, not_modified) == (1, 0)
+    cached = cache.get(spec.uri)
+    assert cached is not None
+    assert cached.metadata.key_authority_bindings[0].key_thumbprint == thumbprint
 
 
 def test_refresh_304_revalidates_freshness_without_changing_content(
