@@ -30,23 +30,25 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install ATI core
-        run: python -m pip install --disable-pip-version-check .
-
       - name: Check pinned standards directly
-        run: ati standards health
+        env:
+          PYTHONPATH: src
+        run: python -m agent_traffic_intelligence.cli standards health
 
       - name: Refresh official identity sources
         env:
+          PYTHONPATH: src
           ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
-        run: ati sources refresh
+        run: python -m agent_traffic_intelligence.cli sources refresh
 
       - name: Validate refreshed sources offline
         env:
+          PYTHONPATH: src
           ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
-        run: ati sources validate
+        run: python -m agent_traffic_intelligence.cli sources validate
 
       - name: Print provenance-safe source status
         env:
+          PYTHONPATH: src
           ATI_SOURCE_CACHE: ${{ runner.temp }}/ati-source-cache
-        run: ati sources status
+        run: python -m agent_traffic_intelligence.cli sources status
