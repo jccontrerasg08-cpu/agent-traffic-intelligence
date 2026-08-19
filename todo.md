@@ -60,3 +60,10 @@
 - [x] Determinar que la comparación sensible a mayúsculas del adaptador era incompatible con la normalización de intermediarios HTTP.
 - [x] Aplicar una corrección mínima, sin reflejar valores crudos ni añadir retención.
 - [x] Publicar la revisión protegida mediante PR #34 y verificar las tres rondas declaradas contra el dominio público.
+
+## Alcance DNS de cliente externo — diagnóstico completado
+
+- [x] Registrar el fallo `curl: (6)` como ausencia de conexión HTTP, no como resultado de ATI.
+- [x] Comprobar el dominio ATI mediante resolutores DNS independientes y una solicitud HTTPS directa.
+- [x] Distinguir una restricción del entorno externo de una incidencia del dominio Railway en el momento de la prueba.
+- [x] Documentar el diagnóstico y un protocolo alternativo que no invente respuestas HTTP.
