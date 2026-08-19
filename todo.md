@@ -30,26 +30,26 @@
 - [x] Añadir entornos y casos de prueba para token presente/ausente, HTTP, identidad declarada y acceso sin señal DNS observable.
 - [x] Ejecutar la matriz completa, registrar evidencia y publicar mediante la PR #30.
 
-## Observación controlada de repetición — preparación completada localmente
+## Observación controlada de repetición — publicación y despliegue completados
 
 - [x] Inventariar el contrato actual y separar la frecuencia observable por solicitud de cualquier identificador o perfil persistente.
 - [x] Definir un protocolo de experimentos para clientes humanos, IA, bots y automatizaciones que use marcadores explícitos y repeticiones acotadas.
 - [x] Implementar sólo las señales agregadas que puedan devolverse sin almacenar identidad, IP, valores de cabecera ni historial de cliente.
 - [x] Añadir pruebas para repetición declarada, declaraciones inválidas y ausencia de datos sensibles en la respuesta.
 - [x] Verificar el paquete y documentar cobertura y límites.
-- [ ] Publicar la revisión protegida y comprobar por separado la URL activa de Railway.
+- [x] Publicar la revisión protegida mediante PR #31 y comprobar la URL activa del servicio ATI separado.
 
-## Incidencia Railway — ruta pública 404
+## Incidencia Railway — ruta pública 404 — resuelta
 
-- [ ] Registrar la evidencia del 404 externo y diferenciarla de los contratos verificados localmente.
-- [ ] Inspeccionar el servicio, dominio y despliegue efectivos de Railway en modo de sólo lectura.
-- [ ] Corregir únicamente la divergencia confirmada entre el código publicado y el servicio activo.
-- [ ] Verificar la ruta pública activa sin cabeceras y conservar un registro de verificación.
+- [x] Registrar la evidencia del 404 externo y diferenciarla de los contratos verificados localmente.
+- [x] Inspeccionar el servicio, dominio y despliegue efectivos de Railway en modo de sólo lectura.
+- [x] Corregir la divergencia confirmada desplegando ATI como servicio separado, sin cambiar el laboratorio.
+- [x] Verificar la ruta pública activa sin cabeceras y conservar un registro de verificación.
 
-## Topología Railway separada en un proyecto compartido — tareas pendientes
+## Topología Railway separada en un proyecto compartido — completada
 
-- [ ] Registrar la decisión de conservar `ati-observation-lab` como destino de pruebas independiente.
-- [ ] Confirmar que la configuración versionada de ATI está lista para un segundo servicio sin reutilizar el dominio ni la retención del laboratorio.
-- [ ] Crear un segundo servicio Railway, dentro del proyecto existente, vinculado a `jccontrerasg08-cpu/agent-traffic-intelligence` en `main`.
-- [ ] Sustituir el ejecutable `ati-service` no encontrado en Railway por un módulo de arranque explícito y verificarlo antes del redespliegue.
-- [ ] Verificar `/health`, `/v1/catalog` y `/v1/observe` en el nuevo dominio y documentar ambos contratos.
+- [x] Registrar la decisión de conservar `ati-observation-lab` como destino de pruebas independiente.
+- [x] Confirmar que la configuración versionada de ATI está lista para un segundo servicio sin reutilizar el dominio ni la retención del laboratorio.
+- [x] Crear un segundo servicio Railway, dentro del proyecto existente, vinculado a `jccontrerasg08-cpu/agent-traffic-intelligence` en `main`.
+- [x] Sustituir el ejecutable `ati-service` no encontrado en Railway por un módulo de arranque explícito y verificarlo antes del redespliegue.
+- [x] Verificar `/health`, `/v1/catalog` y `/v1/observe` en el nuevo dominio y documentar ambos contratos.
