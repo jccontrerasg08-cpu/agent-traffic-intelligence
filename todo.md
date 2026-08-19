@@ -67,3 +67,28 @@
 - [x] Comprobar el dominio ATI mediante resolutores DNS independientes y una solicitud HTTPS directa.
 - [x] Distinguir una restricción del entorno externo de una incidencia del dominio Railway en el momento de la prueba.
 - [x] Documentar el diagnóstico y un protocolo alternativo que no invente respuestas HTTP.
+
+## Prueba mediante navegador automatizado — tareas pendientes
+
+- [ ] Confirmar el alcance anónimo de `/health` desde el navegador automatizado.
+- [ ] Determinar si el navegador permite cabeceras HTTP declarativas por contexto de solicitud.
+- [ ] Ejecutar sólo las rondas admitidas y registrar sus respuestas derivadas.
+- [ ] Reportar el resultado sin atribuir capacidades que la herramienta no proporcione.
+
+## Evaluación de integraciones MCP — completada
+
+- [x] Inventariar las capacidades de Playwright, Cloudinary y Gmail frente a la comprobación HTTP de ATI.
+- [x] Intentar Playwright, la única integración pertinente; no pudo emitir la solicitud porque su Firefox requerido no está instalado.
+- [x] Excluir Cloudinary porque sólo podría comprobar la URL subiendo y reteniendo un activo, y Gmail porque sólo opera correo del usuario y no ofrece un cliente HTTP.
+
+## Prueba mediante Chrome conectado — completada
+
+- [x] Comprobar `/health` de ATI sin cabeceras ni datos sensibles en el Chrome del usuario.
+- [x] Determinar que las capacidades de automatización disponibles para Chrome no exponen una forma de establecer cabeceras declarativas sin extensiones ni cambios persistentes.
+- [x] Ejecutar las rutas anónimas técnicamente admitidas y comunicar su alcance.
+
+## Inspección Cloudflare de sólo lectura — completada
+
+- [x] Identificar las capacidades de Cloudflare aplicables a DNS, zonas y analítica sin modificar recursos.
+- [x] Consultar únicamente los FQDN de ATI y las zonas padre Railway pertinentes; las cuatro respuestas correctas devolvieron cero zonas relacionadas.
+- [x] Distinguir que la integración no ofrece registros DNS ni analítica de este dominio Railway y documentar su límite frente a la evidencia de resolución pública independiente.
