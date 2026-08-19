@@ -512,7 +512,7 @@ def _evaluate_files(
     manifest_path: Path | None,
     threshold: float,
     max_line_characters: int,
-) -> tuple[dict[str, int | float], str | None]:
+) -> tuple[dict[str, int | float | None], str | None]:
     corpus_id = (
         _load_corpus_manifest(manifest_path, max_characters=max_line_characters)
         if manifest_path is not None
@@ -557,7 +557,7 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
         stream.write("\n")
 
 
-def _quality_status(evaluation: Mapping[str, int | float]) -> str:
+def _quality_status(evaluation: Mapping[str, int | float | None]) -> str:
     if (
         evaluation["evaluated_request_count"]
         and not evaluation["unlabeled_request_count"]
@@ -568,7 +568,7 @@ def _quality_status(evaluation: Mapping[str, int | float]) -> str:
 
 
 def _run_summary(
-    run: dict[str, object], evaluation: Mapping[str, int | float]
+    run: dict[str, object], evaluation: Mapping[str, int | float | None]
 ) -> str:
     artifacts = run["artifacts"]
     assert isinstance(artifacts, dict)

@@ -42,6 +42,7 @@ verification = [
 
 [project.scripts]
 ati = "agent_traffic_intelligence.cli:main"
+ati-service = "agent_traffic_intelligence.service:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
