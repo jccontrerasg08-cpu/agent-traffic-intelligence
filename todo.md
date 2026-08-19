@@ -53,3 +53,10 @@
 - [x] Crear un segundo servicio Railway, dentro del proyecto existente, vinculado a `jccontrerasg08-cpu/agent-traffic-intelligence` en `main`.
 - [x] Sustituir el ejecutable `ati-service` no encontrado en Railway por un módulo de arranque explícito y verificarlo antes del redespliegue.
 - [x] Verificar `/health`, `/v1/catalog` y `/v1/observe` en el nuevo dominio y documentar ambos contratos.
+
+## Cabeceras declarativas externas — corrección local verificada
+
+- [x] Registrar la discrepancia entre la solicitud externa con cabeceras y la respuesta que devolvió valores no declarados.
+- [x] Determinar que la comparación sensible a mayúsculas del adaptador era incompatible con la normalización de intermediarios HTTP.
+- [x] Aplicar una corrección mínima, sin reflejar valores crudos ni añadir retención.
+- [ ] Publicar la revisión protegida y verificar las tres rondas declaradas contra el dominio público.
