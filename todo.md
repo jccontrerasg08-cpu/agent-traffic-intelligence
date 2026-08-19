@@ -59,4 +59,4 @@
 - [x] Registrar la discrepancia entre la solicitud externa con cabeceras y la respuesta que devolvió valores no declarados.
 - [x] Determinar que la comparación sensible a mayúsculas del adaptador era incompatible con la normalización de intermediarios HTTP.
 - [x] Aplicar una corrección mínima, sin reflejar valores crudos ni añadir retención.
-- [ ] Publicar la revisión protegida y verificar las tres rondas declaradas contra el dominio público.
+- [x] Publicar la revisión protegida mediante PR #34 y verificar las tres rondas declaradas contra el dominio público.
