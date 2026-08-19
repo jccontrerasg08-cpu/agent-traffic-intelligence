@@ -38,3 +38,18 @@
 - [x] Añadir pruebas para repetición declarada, declaraciones inválidas y ausencia de datos sensibles en la respuesta.
 - [x] Verificar el paquete y documentar cobertura y límites.
 - [ ] Publicar la revisión protegida y comprobar por separado la URL activa de Railway.
+
+## Incidencia Railway — ruta pública 404
+
+- [ ] Registrar la evidencia del 404 externo y diferenciarla de los contratos verificados localmente.
+- [ ] Inspeccionar el servicio, dominio y despliegue efectivos de Railway en modo de sólo lectura.
+- [ ] Corregir únicamente la divergencia confirmada entre el código publicado y el servicio activo.
+- [ ] Verificar la ruta pública activa sin cabeceras y conservar un registro de verificación.
+
+## Topología Railway separada en un proyecto compartido — tareas pendientes
+
+- [ ] Registrar la decisión de conservar `ati-observation-lab` como destino de pruebas independiente.
+- [ ] Confirmar que la configuración versionada de ATI está lista para un segundo servicio sin reutilizar el dominio ni la retención del laboratorio.
+- [ ] Crear un segundo servicio Railway, dentro del proyecto existente, vinculado a `jccontrerasg08-cpu/agent-traffic-intelligence` en `main`.
+- [ ] Sustituir el ejecutable `ati-service` no encontrado en Railway por un módulo de arranque explícito y verificarlo antes del redespliegue.
+- [ ] Verificar `/health`, `/v1/catalog` y `/v1/observe` en el nuevo dominio y documentar ambos contratos.
