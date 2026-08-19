@@ -1,5 +1,5 @@
 .PHONY: \
-	test test-all test-core test-identity test-service test-research test-controlled \
+	test test-all test-core test-identity test-service test-public test-research test-controlled \
 	test-evaluation profile-matrix lint typecheck check package smoke smoke-service
 
 test:
@@ -17,6 +17,9 @@ test-identity:
 test-service:
 	PYTHONPATH=src pytest -q tests/test_service.py
 
+test-public:
+	PYTHONPATH=src:. pytest -q tests/test_public_observation.py
+
 test-research:
 	PYTHONPATH=src pytest -q tests/research
 
@@ -28,7 +31,7 @@ test-controlled:
 test-evaluation:
 	PYTHONPATH=src pytest -q tests/test_evaluation.py
 
-profile-matrix: test-core test-identity test-service test-research test-controlled test-evaluation smoke-service
+profile-matrix: test-core test-identity test-service test-public test-research test-controlled test-evaluation smoke-service
 
 lint:
 	ruff check src tests

@@ -80,6 +80,8 @@ jobs:
             command: make test-identity
           - name: service
             command: make test-service
+          - name: public-observation
+            command: make test-public
           - name: research-contracts
             command: make test-research
           - name: controlled-corpus

@@ -41,6 +41,29 @@ if [[ "${health_status}" != "200" ]] || ! grep --quiet '"mode":"observe-only"' "
   exit 1
 fi
 
+catalog_status="$(curl --silent --output "${workspace}/catalog.json" --write-out '%{http_code}' \
+  "http://127.0.0.1:${port}/v1/catalog?probe=must-not-return")"
+if [[ "${catalog_status}" != "200" ]] \
+  || ! grep --quiet '"catalog_version":"1"' "${workspace}/catalog.json" \
+  || grep --quiet 'must-not-return' "${workspace}/catalog.json"; then
+  echo "error: public catalog response was invalid or exposed request data" >&2
+  exit 1
+fi
+
+observation_status="$(curl --silent --output "${workspace}/observation.json" --write-out '%{http_code}' \
+  --header 'X-ATI-Client-Class: automation' \
+  --header 'Forwarded: for=203.0.113.9' \
+  --header 'User-Agent: ControlledSmokeAutomation/1.0' \
+  "http://127.0.0.1:${port}/v1/observe?probe=must-not-return")"
+if [[ "${observation_status}" != "200" ]] \
+  || ! grep --quiet '"declared_client_class":"automation"' "${workspace}/observation.json" \
+  || ! grep --quiet '"forwarded_header_state":"present_but_untrusted"' "${workspace}/observation.json" \
+  || ! grep --quiet '"dns_resolution":"not_observable_over_http"' "${workspace}/observation.json" \
+  || grep --quiet -E '203\.0\.113\.9|ControlledSmokeAutomation|must-not-return' "${workspace}/observation.json"; then
+  echo "error: public observation response was invalid or exposed raw declaration values" >&2
+  exit 1
+fi
+
 unauthorized_status="$(curl --silent --output "${workspace}/unauthorized.json" --write-out '%{http_code}' \
   --request POST \
   --header 'Content-Type: application/x-ndjson' \
@@ -73,4 +96,4 @@ if [[ "${authorized_status}" != "200" ]] || grep --quiet -E '203\.0\.113\.9|must
   exit 1
 fi
 
-echo "service smoke passed: health, authentication, content type, and privacy-safe output"
+echo "service smoke passed: health, public catalog, public observation, authentication, content type, and privacy-safe output"
