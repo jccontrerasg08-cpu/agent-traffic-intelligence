@@ -157,6 +157,14 @@ ATI is a **local, origin-side log analyzer**, not a Chrome traffic-capturing ext
 
 A later browser integration, if explicitly requested, should hand off a user-selected local artifact directory through a native-messaging host with an exact extension-ID allowlist. It must remain observe-only and must not request broad host permissions or capture browser traffic.
 
+## Railway technical service
+
+The versioned [`railway.toml`](railway.toml) starts `ati-service`; it is a small **technical HTTP adapter**, not a page or dashboard. It exposes `GET /health` for Railway and, only after an operator sets `ATI_SERVICE_TOKEN`, `POST /v1/analyze` for authorized `application/x-ndjson` batches. The endpoint computes and returns privacy-safe detections in the response; it does not persist request bodies, detections, labels, source material, or cache state.
+
+The service is strictly observe-only. It never blocks, challenges, throttles, rewrites, forwards, refreshes identity sources, or changes production traffic. The request body must be UTF-8 JSONL and is bounded by `ATI_MAX_REQUEST_BYTES` (10 MB by default), `ATI_MAX_BATCH_EVENTS` (1,000 by default), and `ATI_MAX_LINE_CHARACTERS` (1,000,000 by default). Per-batch session state is bounded with `ATI_MAX_CLIENTS`, `ATI_MAX_EVENTS_PER_CLIENT`, and `ATI_SESSION_WINDOW_SECONDS`.
+
+Set `ATI_HASH_KEY` when submitted records include raw client IPs. Do not use the health endpoint as evidence that the analysis endpoint is authorized: `/health` reports whether it is enabled but never returns the service token or the hash key. The Railway service must receive `PORT` from the platform and defaults to `0.0.0.0`; it requires no volume for its default stateless operation. If identity verification is enabled in a later revision, configure `ATI_SOURCE_CACHE` and persistence deliberately rather than assuming ephemeral disk is suitable.
+
 ## Output
 
 V0-compatible analysis omits the `verification` field entirely. With V1 verification enabled, a separate versioned verification payload records the resolved identity state and privacy-safe evidence. This preserves the original four score dimensions while making stronger identity evidence auditable.

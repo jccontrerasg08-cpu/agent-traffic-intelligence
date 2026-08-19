@@ -31,6 +31,7 @@ _REQUIRED_SPLIT_STRATEGIES = frozenset(
         "provider_ua_ablation",
     }
 )
+_CALIBRATION_BIN_COUNT = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,9 +50,13 @@ class AutomationEvaluation:
     f1: float
     accuracy: float
     brier_score: float
+    false_positive_rate: float | None
+    false_negative_rate: float | None
+    pr_auc: float | None
+    expected_calibration_error: float | None
     threshold: float
 
-    def to_dict(self) -> dict[str, int | float]:
+    def to_dict(self) -> dict[str, int | float | None]:
         return {
             "evaluated_request_count": self.evaluated_request_count,
             "unlabeled_request_count": self.unlabeled_request_count,
@@ -65,8 +70,64 @@ class AutomationEvaluation:
             "f1": self.f1,
             "accuracy": self.accuracy,
             "brier_score": self.brier_score,
+            "false_positive_rate": self.false_positive_rate,
+            "false_negative_rate": self.false_negative_rate,
+            "pr_auc": self.pr_auc,
+            "expected_calibration_error": self.expected_calibration_error,
             "threshold": self.threshold,
         }
+
+
+def _pr_auc(scored_labels: list[tuple[float, bool]]) -> float | None:
+    """Calculate threshold-based average precision, or None without positives."""
+
+    positive_count = sum(label for _, label in scored_labels)
+    if not positive_count:
+        return None
+
+    ranked = sorted(scored_labels, key=lambda item: item[0], reverse=True)
+    true_positive = false_positive = 0
+    previous_recall = 0.0
+    area = 0.0
+    index = 0
+    while index < len(ranked):
+        score = ranked[index][0]
+        group_end = index
+        while group_end < len(ranked) and ranked[group_end][0] == score:
+            group_end += 1
+        true_positive += sum(label for _, label in ranked[index:group_end])
+        false_positive += group_end - index - sum(
+            label for _, label in ranked[index:group_end]
+        )
+        recall = true_positive / positive_count
+        precision = true_positive / (true_positive + false_positive)
+        area += (recall - previous_recall) * precision
+        previous_recall = recall
+        index = group_end
+    return area
+
+
+def _expected_calibration_error(scored_labels: list[tuple[float, bool]]) -> float | None:
+    """Calculate ECE with ten fixed-width confidence bins."""
+
+    if not scored_labels:
+        return None
+    bin_count = [0] * _CALIBRATION_BIN_COUNT
+    bin_score_total = [0.0] * _CALIBRATION_BIN_COUNT
+    bin_positive_total = [0] * _CALIBRATION_BIN_COUNT
+    for score, label in scored_labels:
+        bucket = min(int(score * _CALIBRATION_BIN_COUNT), _CALIBRATION_BIN_COUNT - 1)
+        bin_count[bucket] += 1
+        bin_score_total[bucket] += score
+        bin_positive_total[bucket] += label
+
+    sample_count = len(scored_labels)
+    return sum(
+        (count / sample_count)
+        * abs((bin_score_total[index] / count) - (bin_positive_total[index] / count))
+        for index, count in enumerate(bin_count)
+        if count
+    )
 
 
 def validate_corpus_manifest(manifest: Mapping[str, Any]) -> str:
@@ -164,6 +225,7 @@ def evaluate_automation_scores(
 
     true_positive = false_positive = true_negative = false_negative = 0
     squared_error_total = 0.0
+    scored_labels: list[tuple[float, bool]] = []
     evaluated = unlabeled = 0
     matched_labels: set[str] = set()
     seen_detection_ids: set[str] = set()
@@ -180,6 +242,7 @@ def evaluate_automation_scores(
 
         matched_labels.add(request_id)
         evaluated += 1
+        scored_labels.append((score, label))
         predicted = score >= threshold
         squared_error_total += (score - float(label)) ** 2
         if predicted and label:
@@ -198,6 +261,8 @@ def evaluate_automation_scores(
     f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
     accuracy = (true_positive + true_negative) / evaluated if evaluated else 0.0
     brier_score = squared_error_total / evaluated if evaluated else 0.0
+    negative_count = true_negative + false_positive
+    positive_count = true_positive + false_negative
 
     return AutomationEvaluation(
         evaluated_request_count=evaluated,
@@ -212,5 +277,13 @@ def evaluate_automation_scores(
         f1=f1,
         accuracy=accuracy,
         brier_score=brier_score,
+        false_positive_rate=(
+            false_positive / negative_count if negative_count else None
+        ),
+        false_negative_rate=(
+            false_negative / positive_count if positive_count else None
+        ),
+        pr_auc=_pr_auc(scored_labels),
+        expected_calibration_error=_expected_calibration_error(scored_labels),
         threshold=threshold,
     )

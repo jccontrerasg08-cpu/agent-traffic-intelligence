@@ -57,8 +57,24 @@ def test_evaluation_reports_confusion_metrics_coverage_and_brier_score() -> None
         "f1": pytest.approx(2 / 3),
         "accuracy": pytest.approx(2 / 3),
         "brier_score": pytest.approx((0.01 + 0.49 + 0.04) / 3),
+        "false_positive_rate": pytest.approx(0.5),
+        "false_negative_rate": pytest.approx(0.0),
+        "pr_auc": pytest.approx(1.0),
+        "expected_calibration_error": pytest.approx(1 / 3),
         "threshold": 0.5,
     }
+
+
+def test_evaluation_returns_none_for_metrics_without_a_class() -> None:
+    result = evaluate_automation_scores(
+        [detection("a", 0.1), detection("b", 0.2)],
+        {"a": False, "b": False},
+    )
+
+    assert result.false_positive_rate == 0.0
+    assert result.false_negative_rate is None
+    assert result.pr_auc is None
+    assert result.expected_calibration_error == pytest.approx(0.15)
 
 
 @pytest.mark.parametrize("threshold", (-0.1, 1.1))

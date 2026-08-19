@@ -58,9 +58,9 @@ Run the evaluator with:
 ati evaluate detections.jsonl --labels labels.jsonl --threshold 0.5
 ```
 
-The output contains the confusion matrix, precision, recall, F1, accuracy, Brier score, selected threshold, and two coverage indicators. `unlabeled_request_count` and `unmatched_label_count` must be investigated rather than silently classified as negative traffic. Duplicate label IDs, malformed JSONL, invalid booleans, duplicate detections, and scores outside `[0, 1]` are rejected.
+The output contains the confusion matrix, precision, recall, F1, accuracy, Brier score, false-positive rate, false-negative rate, PR-AUC, expected calibration error, selected threshold, and two coverage indicators. `unlabeled_request_count` and `unmatched_label_count` must be investigated rather than silently classified as negative traffic. Duplicate label IDs, malformed JSONL, invalid booleans, duplicate detections, and scores outside `[0, 1]` are rejected. Rate metrics are `null` when their corresponding class is absent; PR-AUC is `null` when the evaluated corpus contains no positive examples.
 
-> The Brier score is a score-quality diagnostic, not proof of calibration. Probability calibration and learned detection still require a time-aware, authorized corpus using the leakage controls above.
+> Brier score and expected calibration error are score-quality diagnostics, not proof of calibration. Expected calibration error uses ten fixed-width score bins and should be interpreted with the corpus size and score distribution. Probability calibration and learned detection still require a time-aware, authorized corpus using the leakage controls above.
 
 ## Corpus handling
 
