@@ -66,6 +66,54 @@ jobs:
           test "$(wc -l < /tmp/detections.jsonl)" -eq 2
           if grep -q '"verification"' /tmp/detections.jsonl; then exit 1; fi
 
+  profiles:
+    name: Profile ${{ matrix.profile.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - name: core
+            command: make test-core
+          - name: identity-offline
+            command: make test-identity
+          - name: service
+            command: make test-service
+          - name: research-contracts
+            command: make test-research
+          - name: controlled-corpus
+            command: make test-controlled
+          - name: evaluation
+            command: make test-evaluation
+          - name: packaged-service
+            command: make smoke-service
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install locked development dependencies
+        run: python -m pip install --disable-pip-version-check --require-hashes -r requirements-dev.txt
+
+      - name: Install local package without resolving dependencies
+        run: python -m pip install --disable-pip-version-check --no-deps --no-build-isolation -e .
+
+      - name: Run isolated profile
+        env:
+          ATI_NETWORK_ACCESS: disabled
+          ATI_REFRESH_SOURCES: "false"
+        run: ${{ matrix.profile.command }}
+
   verification:
     name: Verification Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
