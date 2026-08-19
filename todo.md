@@ -13,19 +13,28 @@
 - [x] Verificar el comportamiento sobre `PORT`, el empaquetado, la regresión y el cierre limpio del proceso.
 - [x] Documentar las variables no secretas, el almacenamiento requerido y el procedimiento de despliegue.
 
-## Modularización y matriz de entornos — tareas completadas localmente
+## Modularización y matriz de entornos — tareas completadas
 
 - [x] Extraer los requisitos verificables de la conversación adjunta y contrastarlos con los módulos existentes.
 - [x] Definir arquitectura modular, contratos de paquete y límites explícitos para identidad, fingerprint, comportamiento, descubrimiento y evaluación.
 - [x] Reorganizar el código sin romper las interfaces públicas ni los contratos observe-only.
 - [x] Crear perfiles de prueba aislados para unidad, integración de servicio, corpus controlado, regresión y empaquetado.
 - [x] Documentar la matriz de casos, variables, retención, riesgos, resultados esperados y rutas de extensión no implementadas.
-- [x] Ejecutar la matriz completa y conservar evidencia local; falta publicar la revisión protegida.
+- [x] Ejecutar la matriz completa, conservar evidencia y publicar la revisión protegida mediante PR #29.
 
-## Observación pública y catálogo de capacidades — preparación completada
+## Observación pública y catálogo de capacidades — publicación completada
 
 - [x] Clasificar cada variable solicitada como medible, opt-in, no fiable o fuera de alcance, con fuente y límite de privacidad.
 - [x] Diseñar el catálogo público de capacidades y las cabeceras de respuesta que no requieran token ni almacenen identificadores.
 - [x] Implementar variantes de observación segura para clientes públicos, automatizados, directos y con metadatos explícitos.
 - [x] Añadir entornos y casos de prueba para token presente/ausente, HTTP, identidad declarada y acceso sin señal DNS observable.
-- [x] Ejecutar la matriz completa, registrar evidencia y preparar la publicación mediante revisión protegida.
+- [x] Ejecutar la matriz completa, registrar evidencia y publicar mediante la PR #30.
+
+## Observación controlada de repetición — preparación completada localmente
+
+- [x] Inventariar el contrato actual y separar la frecuencia observable por solicitud de cualquier identificador o perfil persistente.
+- [x] Definir un protocolo de experimentos para clientes humanos, IA, bots y automatizaciones que use marcadores explícitos y repeticiones acotadas.
+- [x] Implementar sólo las señales agregadas que puedan devolverse sin almacenar identidad, IP, valores de cabecera ni historial de cliente.
+- [x] Añadir pruebas para repetición declarada, declaraciones inválidas y ausencia de datos sensibles en la respuesta.
+- [x] Verificar el paquete y documentar cobertura y límites.
+- [ ] Publicar la revisión protegida y comprobar por separado la URL activa de Railway.

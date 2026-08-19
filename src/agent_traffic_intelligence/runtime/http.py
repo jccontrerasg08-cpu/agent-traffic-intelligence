@@ -70,7 +70,7 @@ class AtiServiceHandler(BaseHTTPRequestHandler):
                         dict(self.headers.items())
                     ).to_dict(),
                     "persistence": "none",
-                    "schema_version": "1",
+                    "schema_version": "2",
                 },
             )
             return
