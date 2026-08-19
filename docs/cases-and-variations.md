@@ -38,6 +38,8 @@
 | SVC-06 | Lote vacío, malformado o sobre límite de eventos | `400` o `422` con error explícito. | Sin estado persistente ni salida parcial. | `test-service`. |
 | SVC-07 | Lote autorizado válido | `200` con detecciones privacy-safe. | No persiste bodies, etiquetas, caché ni detecciones. | `test-service`, `smoke-service`. |
 | SVC-08 | Método/ruta no soportados | `404` o `405`. | No existe UI, proxy ni rutas implícitas. | `test-service`. |
+| SVC-09 | `GET /v1/catalog` sin token | `200` con versión, rutas, dimensiones y límites del catálogo público. | No devuelve query strings ni crea estado de cliente. | `test-public`, `smoke-service`. |
+| SVC-10 | `GET /v1/observe` con declaración humana, IA, bot, automatización o desconocida | `200` con etiquetas de presencia y clase declarada; clase desconocida como `unspecified`. | No trata declaraciones como identidad; no devuelve valores de cabecera, IP, DNS, query ni identidad real. | `test-public`, `smoke-service`. |
 
 ## Casos de evaluación y corpus
 
@@ -67,7 +69,8 @@
 |---|---|---|---|
 | ¿Se preserva el comportamiento base? | `make test-core` | Reglas, modelos, parsing y score. | Aceptar un cambio al núcleo. |
 | ¿La identidad funciona sin depender de red real? | `make test-identity` | Fixtures, cachés y fallos controlados. | Cambiar perfiles o verificadores offline. |
-| ¿El servicio sigue cerrado y privacy-safe? | `make test-service` y `make smoke-service` | Auth, Content-Type, límites y ejecución empaquetada. | Desplegar la revisión técnica en Railway. |
+| ¿El servicio técnico sigue cerrado y privacy-safe? | `make test-service` y `make smoke-service` | Auth, Content-Type, límites y ejecución empaquetada. | Desplegar la revisión técnica en Railway. |
+| ¿Las rutas públicas informan capacidades sin perfilar al cliente? | `make test-public` y `make smoke-service` | Catálogo sin token, observación de presencia y ausencia de valores sensibles. | Exponer solamente observación response-only en Railway. |
 | ¿Una campaña está lista para evaluar? | `make test-controlled` y `make test-evaluation` | Cobertura, manifiesto y métricas. | Abrir revisión de corpus; no declarar producción aún. |
 | ¿Una ruta propuesta puede empezar a implementarse? | `make test-research` más su contrato específico. | Declaración de owner, autorización, retención y métricas. | Revisar diseño; todavía no activar detector. |
 

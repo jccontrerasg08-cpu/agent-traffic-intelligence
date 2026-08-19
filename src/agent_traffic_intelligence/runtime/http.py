@@ -7,12 +7,17 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import urlsplit
 
 from agent_traffic_intelligence import __version__
 from agent_traffic_intelligence.engine import Detector
 from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.parsers.jsonl import ParseError, iter_jsonl
 from agent_traffic_intelligence.runtime.config import ServiceConfig
+from agent_traffic_intelligence.runtime.public_observation import (
+    PUBLIC_CATALOG,
+    PublicObservation,
+)
 
 
 class ServiceRequestError(ValueError):
@@ -39,24 +44,40 @@ class AtiServiceHandler(BaseHTTPRequestHandler):
         """Avoid logging client addresses, headers, paths, or payload hints."""
 
     def do_GET(self) -> None:
-        if self.path != "/health":
-            self._json_error(HTTPStatus.NOT_FOUND, "not_found")
+        path = urlsplit(self.path).path
+        if path == "/health":
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "status": "ok",
+                    "mode": "observe-only",
+                    "analysis_endpoint": (
+                        "enabled" if self.server.config.analysis_enabled else "disabled"
+                    ),
+                    "persistence": "none",
+                    "version": __version__,
+                },
+            )
             return
-        self._json(
-            HTTPStatus.OK,
-            {
-                "status": "ok",
-                "mode": "observe-only",
-                "analysis_endpoint": (
-                    "enabled" if self.server.config.analysis_enabled else "disabled"
-                ),
-                "persistence": "none",
-                "version": __version__,
-            },
-        )
+        if path == "/v1/catalog":
+            self._json(HTTPStatus.OK, PUBLIC_CATALOG)
+            return
+        if path == "/v1/observe":
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "observation": PublicObservation.from_headers(
+                        dict(self.headers.items())
+                    ).to_dict(),
+                    "persistence": "none",
+                    "schema_version": "1",
+                },
+            )
+            return
+        self._json_error(HTTPStatus.NOT_FOUND, "not_found")
 
     def do_POST(self) -> None:
-        if self.path != "/v1/analyze":
+        if urlsplit(self.path).path != "/v1/analyze":
             self._json_error(HTTPStatus.NOT_FOUND, "not_found")
             return
         config = self.server.config

@@ -21,3 +21,11 @@
 - [x] Crear perfiles de prueba aislados para unidad, integración de servicio, corpus controlado, regresión y empaquetado.
 - [x] Documentar la matriz de casos, variables, retención, riesgos, resultados esperados y rutas de extensión no implementadas.
 - [x] Ejecutar la matriz completa y conservar evidencia local; falta publicar la revisión protegida.
+
+## Observación pública y catálogo de capacidades — preparación completada
+
+- [x] Clasificar cada variable solicitada como medible, opt-in, no fiable o fuera de alcance, con fuente y límite de privacidad.
+- [x] Diseñar el catálogo público de capacidades y las cabeceras de respuesta que no requieran token ni almacenen identificadores.
+- [x] Implementar variantes de observación segura para clientes públicos, automatizados, directos y con metadatos explícitos.
+- [x] Añadir entornos y casos de prueba para token presente/ausente, HTTP, identidad declarada y acceso sin señal DNS observable.
+- [x] Ejecutar la matriz completa, registrar evidencia y preparar la publicación mediante revisión protegida.
