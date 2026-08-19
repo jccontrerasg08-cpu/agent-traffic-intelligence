@@ -47,14 +47,18 @@ La configuración versionada de `agent-traffic-intelligence` establece `startCom
 | Editar la fuente desde el panel Railway conectado | La extensión de `My Browser` devolvió `HTTP 504` dos veces al abrir el control `Edit`; recargar el panel sí funcionó. | Bloqueado temporalmente |
 | Usar la CLI como alternativa | El binario `railway` no está instalado en el entorno. | Bloqueado |
 
-La confirmación del usuario para reemplazar la fuente ya fue recibida. No se hizo ningún cambio de configuración remota debido a estos bloqueos de interfaz.
+La confirmación del usuario para reemplazar la fuente fue recibida inicialmente. Tras revisar el propósito de ambos repositorios, se decidió no sustituir el laboratorio: se mantendría aislado y ATI se desplegaría como un segundo servicio del mismo proyecto.
 
-## Siguiente comprobación
+## Decisión de topología
 
-Decidir explícitamente entre (a) reemplazar la fuente Railway por `agent-traffic-intelligence`, que satisface el contrato observe-only sin retención, o (b) modificar el repositorio FastAPI separado. La opción (b) exige eliminar primero su retención de identificador derivado y `User-Agent`; no debe añadirse una simple ruta alias que perpetúe esa retención. No interpretar solicitudes externas 404 como observaciones de cliente ni como datos de identidad.
+Se conserva `ati-observation-lab` como destino de pruebas con su contrato propio. No se añadieron rutas alias que confundieran su semántica o perpetuaran su retención de identificadores derivados. `agent-traffic-intelligence` se expone independientemente para el contrato observe-only sin retención.
 
 ## Despliegue aislado de ATI — evidencia adicional
 
 El 19 de agosto de 2026 se creó un segundo servicio `agent-traffic-intelligence` dentro del proyecto Railway existente, conectado a `jccontrerasg08-cpu/agent-traffic-intelligence`, rama `main`. Railway construyó la imagen e instaló el paquete con éxito, pero el registro de ejecución informó repetidamente: `/bin/bash: line 1: ati-service: command not found`. El health check configurado en `/health` agotó sus reintentos porque no existía un proceso activo.
 
-La causa confirmada es la disponibilidad del ejecutable de consola en el `PATH` del contenedor, no una ausencia de la ruta `/health` ni un problema del contrato HTTP. La corrección pendiente de publicar usa un módulo Python explícito que carga el mismo servidor sin depender de ese `PATH`.
+La causa confirmada es la disponibilidad del ejecutable de consola en el `PATH` del contenedor, no una ausencia de la ruta `/health` ni un problema del contrato HTTP. La PR #32 sustituyó ese ejecutable por un módulo Python explícito que carga el mismo servidor sin depender de `PATH`; la CI protegida aprobó y Railway redesplegó el servicio correctamente.
+
+## Validación pública de la resolución
+
+El servicio ATI separado quedó accesible en `https://agent-traffic-intelligence-production.up.railway.app`. Comprobaciones anónimas directas devolvieron `200` para `/health`, `/v1/catalog` y `/v1/observe`. La última ruta devolvió `schema_version: "2"`, `persistence: "none"`, `declared_client_class: "unspecified"`, `client_identity: "not_verified"` y `client_intent: "not_observable"`. Esto resuelve el 404 de ruta ATI sin reinterpretar ni modificar las rutas del laboratorio original.
