@@ -58,6 +58,72 @@ def test_analyze_emits_privacy_safe_jsonl_and_summary(tmp_path, monkeypatch, cap
     assert "processed=2" in captured.err
 
 
+def test_campaign_labels_emits_privacy_safe_ground_truth_for_matching_marker(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    input_path = tmp_path / "access.jsonl"
+    labels_path = tmp_path / "labels.jsonl"
+    rows = [
+        {
+            "time_iso8601": "2026-08-19T08:00:00+00:00",
+            "remote_addr": "203.0.113.9",
+            "request_method": "GET",
+            "request_uri": "/owned-path?token=never-log-this",
+            "status": 200,
+            "body_bytes_sent": 100,
+            "server_protocol": "HTTP/2",
+            "http_user_agent": "ControlledAgent/1.0",
+            "ati_campaign_id": "owned-shadow-2026-08",
+            "http_authorization": "Bearer do-not-log",
+            "http_cookie": "session=do-not-log",
+        },
+        {
+            "time_iso8601": "2026-08-19T08:00:05+00:00",
+            "remote_addr": "203.0.113.10",
+            "request_method": "GET",
+            "request_uri": "/other-path?email=private@example.com",
+            "status": 200,
+            "body_bytes_sent": 100,
+            "server_protocol": "HTTP/2",
+            "ati_campaign_id": "other-campaign",
+        },
+    ]
+    input_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    monkeypatch.setenv("ATI_HASH_KEY", "test-secret-key")
+
+    code = main(
+        [
+            "campaign",
+            "labels",
+            str(input_path),
+            "--campaign-id",
+            "owned-shadow-2026-08",
+            "--corpus-id",
+            "owned-shadow-2026-08",
+            "--output",
+            str(labels_path),
+        ]
+    )
+
+    assert code == 0
+    labels = [json.loads(line) for line in labels_path.read_text(encoding="utf-8").splitlines()]
+    assert labels == [
+        {
+            "automated": True,
+            "corpus_id": "owned-shadow-2026-08",
+            "label_confidence": 1.0,
+            "label_source": "controlled-campaign",
+            "request_id": labels[0]["request_id"],
+        }
+    ]
+    serialized = labels_path.read_text(encoding="utf-8")
+    assert "203.0.113" not in serialized
+    assert "never-log-this" not in serialized
+    assert "private@example.com" not in serialized
+    assert "do-not-log" not in serialized
+    assert "generated_label_count=1" in capsys.readouterr().err
+
+
 def test_analyze_fails_cleanly_without_hash_key_for_raw_ip(tmp_path, monkeypatch, capsys) -> None:
     input_path = tmp_path / "access.jsonl"
     write_input(input_path)

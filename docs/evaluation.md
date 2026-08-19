@@ -8,6 +8,8 @@ Strong labels can come from controlled traffic generation or verifiable provider
 
 ## Controlled generators
 
+For an end-to-end privacy-first procedure using an allowlisted campaign marker and generated ground-truth labels, see [controlled-observation.md](controlled-observation.md).
+
 Generate authorized lab traffic from:
 
 - browsers used manually;
