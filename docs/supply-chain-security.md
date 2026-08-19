@@ -13,7 +13,7 @@ ATI minimizes the trust surface of automation instead of adding Actions for conv
 
 ## OSV status
 
-OSV-Scanner 2.x supports Python dependency inventories such as `uv.lock`, `pylock.toml`, requirements files, and Poetry/PDM/Pipenv lockfiles. ATI currently has no dependency lockfile, so a scheduled OSV workflow is intentionally deferred instead of publishing a misleading successful scan with no dependency inventory.
+ATI maintains `requirements-dev.txt`, a hash-pinned Python dependency lockfile for development and verification. CI installs it with `--require-hashes`, so future OSV scanning can use a concrete dependency inventory. A scheduled OSV workflow is not yet configured; the project does not claim continuous OSV coverage until that control exists.
 
 ## Releases
 
