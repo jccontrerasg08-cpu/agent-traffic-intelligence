@@ -115,6 +115,42 @@ def _parser() -> argparse.ArgumentParser:
         help="Reject JSONL records longer than this many characters (default: 1000000).",
     )
 
+    campaign = subparsers.add_parser(
+        "campaign",
+        help="Create privacy-safe ground-truth labels from controlled traffic.",
+    )
+    campaign_sub = campaign.add_subparsers(dest="campaign_command", required=True)
+    campaign_labels = campaign_sub.add_parser(
+        "labels",
+        help="Generate labels for records carrying one allowlisted campaign marker.",
+    )
+    campaign_labels.add_argument("input", help="JSONL access-log path.")
+    campaign_labels.add_argument(
+        "--campaign-id",
+        required=True,
+        help="Opaque value expected only in the ati_campaign_id log field.",
+    )
+    campaign_labels.add_argument(
+        "--corpus-id",
+        required=True,
+        help="Authorized corpus identifier written to generated labels.",
+    )
+    campaign_labels.add_argument("--output", required=True, help="Write labels JSONL to this path.")
+    campaign_labels.add_argument(
+        "--source", default="jsonl", help="Source adapter label used to derive request IDs."
+    )
+    campaign_labels.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+    campaign_labels.add_argument(
+        "--hash-key-env",
+        default="ATI_HASH_KEY",
+        help="Environment variable containing the client pseudonymization key.",
+    )
+
     registry = subparsers.add_parser("registry", help="Inspect the curated agent registry.")
     registry_sub = registry.add_subparsers(dest="registry_command", required=True)
     registry_sub.add_parser("validate", help="Validate the packaged registry.")
@@ -243,14 +279,19 @@ def _source_cache() -> SourceCache:
     return SourceCache(_source_cache_path())
 
 
-def _analyze(args: argparse.Namespace) -> int:
+def _analysis_hash_key(args: argparse.Namespace) -> bytes | None:
     key_text = os.environ.get(args.hash_key_env)
     hash_key = key_text.encode("utf-8") if key_text else None
     if hash_key is not None and len(hash_key) > 64:
-        print(
-            f"error: {args.hash_key_env} exceeds the 64-byte BLAKE2b key limit.",
-            file=sys.stderr,
-        )
+        raise ValueError(f"{args.hash_key_env} exceeds the 64-byte BLAKE2b key limit")
+    return hash_key
+
+
+def _analyze(args: argparse.Namespace) -> int:
+    try:
+        hash_key = _analysis_hash_key(args)
+    except ValueError as exc:
+        print(f"error: {exc}.", file=sys.stderr)
         return 2
     mode = VerificationMode(args.verification_mode)
     session_state = SessionFeatureState(
@@ -320,6 +361,45 @@ def _analyze(args: argparse.Namespace) -> int:
         ),
         file=sys.stderr,
     )
+    return 0
+
+
+def _campaign_labels(args: argparse.Namespace) -> int:
+    try:
+        hash_key = _analysis_hash_key(args)
+        records = _iter_json_objects(
+            Path(args.input),
+            kind="access-log",
+            max_line_characters=args.max_line_characters,
+        )
+        with Path(args.input).open("r", encoding="utf-8") as stream:
+            events = iter_jsonl(
+                stream,
+                hash_key=hash_key,
+                source=args.source,
+                max_line_characters=args.max_line_characters,
+            )
+            generated = 0
+            with _atomic_output(Path(args.output)) as output_stream:
+                for record, event in zip(records, events, strict=True):
+                    if record.get("ati_campaign_id") != args.campaign_id:
+                        continue
+                    output_stream.write(
+                        _json_line(
+                            {
+                                "request_id": event.request_id,
+                                "automated": True,
+                                "label_source": "controlled-campaign",
+                                "label_confidence": 1.0,
+                                "corpus_id": args.corpus_id,
+                            }
+                        )
+                    )
+                    generated += 1
+    except (EvaluationError, OSError, ParseError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"generated_label_count={generated}", file=sys.stderr)
     return 0
 
 
@@ -665,6 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _explain(args)
     if args.command == "evaluate":
         return _evaluate(args)
+    if args.command == "campaign" and args.campaign_command == "labels":
+        return _campaign_labels(args)
     if args.command == "registry" and args.registry_command == "validate":
         return _registry_validate()
     if args.command == "sources" and args.sources_command == "status":
