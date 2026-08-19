@@ -10,16 +10,26 @@ CLIENT_HINT_FIELDS = ("Sec-CH-UA", "Sec-CH-UA-Mobile", "Sec-CH-UA-Platform")
 DECLARED_INTERACTION_MODES = frozenset({"mixed", "silent", "text", "tool_call"})
 
 
+def _header_value(headers: Mapping[str, str], field: str) -> str:
+    """Read one HTTP field name without depending on intermediary capitalization."""
+
+    expected = field.casefold()
+    for name, value in headers.items():
+        if name.casefold() == expected:
+            return value
+    return ""
+
+
 def _header_present(headers: Mapping[str, str], field: str) -> bool:
     """Report field presence without returning potentially identifying values."""
 
-    return bool(headers.get(field, "").strip())
+    return bool(_header_value(headers, field).strip())
 
 
 def _declared_client_class(headers: Mapping[str, str]) -> str:
     """Normalize an opt-in category without treating it as verified identity."""
 
-    declared = headers.get("X-ATI-Client-Class", "").strip().lower()
+    declared = _header_value(headers, "X-ATI-Client-Class").strip().lower()
     if declared in DECLARED_CLIENT_CLASSES:
         return declared
     return "unspecified"
@@ -28,7 +38,7 @@ def _declared_client_class(headers: Mapping[str, str]) -> str:
 def _controlled_iteration(headers: Mapping[str, str]) -> str:
     """Classify only a bounded, client-declared experiment iteration."""
 
-    declared = headers.get("X-ATI-Observation-Iteration", "").strip()
+    declared = _header_value(headers, "X-ATI-Observation-Iteration").strip()
     if not declared:
         return "not_declared"
     if declared == "1":
@@ -41,7 +51,7 @@ def _controlled_iteration(headers: Mapping[str, str]) -> str:
 def _declared_interaction_mode(headers: Mapping[str, str]) -> str:
     """Normalize an opt-in interaction category without returning its raw value."""
 
-    declared = headers.get("X-ATI-Interaction-Mode", "").strip().lower()
+    declared = _header_value(headers, "X-ATI-Interaction-Mode").strip().lower()
     if declared in DECLARED_INTERACTION_MODES:
         return declared
     return "unspecified"

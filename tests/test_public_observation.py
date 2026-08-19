@@ -129,6 +129,23 @@ def test_public_observation_normalizes_controlled_experiment_declarations(
     assert payload["observation"]["client_intent"] == "not_observable"
 
 
+def test_public_observation_accepts_intermediary_header_capitalization() -> None:
+    config = ServiceConfig(host="127.0.0.1", port=0)
+    headers = {
+        "x-ati-client-class": "ai",
+        "X-Ati-Interaction-Mode": "tool_call",
+        "x-Ati-Observation-Iteration": "2",
+    }
+
+    with running_service(config) as (host, port):
+        status, payload = request(host, port, "GET", "/v1/observe", headers=headers)
+
+    assert status == 200
+    assert payload["observation"]["declared_client_class"] == "ai"
+    assert payload["observation"]["controlled_iteration"] == "repeat_declared"
+    assert payload["observation"]["interaction_mode"] == "tool_call"
+
+
 def test_public_observation_rejects_invalid_control_declarations_without_reflection() -> None:
     config = ServiceConfig(host="127.0.0.1", port=0)
     headers = {
