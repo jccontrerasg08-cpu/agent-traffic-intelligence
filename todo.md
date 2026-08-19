@@ -92,3 +92,12 @@
 - [x] Identificar las capacidades de Cloudflare aplicables a DNS, zonas y analítica sin modificar recursos.
 - [x] Consultar únicamente los FQDN de ATI y las zonas padre Railway pertinentes; las cuatro respuestas correctas devolvieron cero zonas relacionadas.
 - [x] Distinguir que la integración no ofrece registros DNS ni analítica de este dominio Railway y documentar su límite frente a la evidencia de resolución pública independiente.
+
+## Mapa extendido de evidencia observe-only — completado
+
+- [x] Definir hipótesis, fuentes primarias y límites de inferencia para rutas públicas, DNS, TLS, configuración versionada e integraciones.
+- [x] Volver a comprobar las rutas públicas de ATI y del laboratorio desde vías independientes, sin cabeceras ni datos sensibles cuando la herramienta no las soporte.
+- [x] Recopilar únicamente metadatos públicos de DNS y TLS, diferenciando resolución del nombre, conectividad HTTP y administración de zonas.
+- [x] Auditar los contratos versionados, pruebas y documentación para mapear las variables observables, declaradas y explícitamente no observables.
+- [x] Contrastar los hallazgos con Railway y Cloudflare en modo de sólo lectura, sin modificar dominios, despliegues, secretos, reglas ni retención.
+- [x] Consolidar las ramas verificadas, límites, contradicciones y próximos experimentos mínimos en una evidencia publicable.
