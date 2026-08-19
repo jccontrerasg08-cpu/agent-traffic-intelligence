@@ -5,11 +5,13 @@ Apply these after creating the remote repository.
 ## Default branch
 
 - `main`
-- require pull requests before merge once collaboration starts;
+- require pull requests before merge;
 - require CI checks;
 - require branches to be up to date when practical;
 - block force pushes and branch deletion;
 - prefer squash merge and linear history.
+
+The current single-maintainer setup applies the `Protect main` ruleset: pull requests, required CI checks, and resolved conversations are mandatory, while force pushes and branch deletion are blocked. Independent approval remains at zero until a second maintainer can provide a real review.
 
 ## Security
 
