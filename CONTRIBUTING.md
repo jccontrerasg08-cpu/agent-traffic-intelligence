@@ -27,6 +27,9 @@ mypy src
 3. Run `make check` before opening a PR.
 4. For registry entries, include an official source URL and verification date.
 5. For new data/features, document privacy implications and leakage risks.
+6. For a new module, preserve a public facade or explicitly version the breaking interface; record the boundary in `docs/architecture/modular-boundaries.md`.
+7. For a new environment or variation, add an example under `environments/`, a Makefile profile or an explicit reason not to have one, and a row in `docs/cases-and-variations.md`.
+8. For a research track, add a `ResearchCase` contract with owner, data categories, retention policy, metrics, and an authorization reference before it can be marked ready for review.
 
 ## Machine-learning contributions
 

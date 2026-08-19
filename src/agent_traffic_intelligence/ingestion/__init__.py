@@ -1,7 +1,4 @@
-"""Compatibility facade for the canonical JSONL ingestion adapter.
-
-New code should import from :mod:`agent_traffic_intelligence.ingestion`.
-"""
+"""Canonical privacy-safe ingestion interfaces for normalized access events."""
 
 from agent_traffic_intelligence.ingestion.jsonl import (
     DEFAULT_MAX_LINE_CHARACTERS,

@@ -52,6 +52,23 @@ request/session features
 
 The deterministic core has **zero third-party Python runtime dependencies**. Cryptographic verification is an optional extra.
 
+## Modular architecture and reproducible environments
+
+ATI remains one Python distribution, but its boundaries are now explicit: `ingestion` normalizes authorized JSONL; `detection` composes evidence and scores; `identity` verifies independent claims; `evaluation` measures labeled artifacts; `runtime` owns the no-UI technical adapter; and `research` contains **contracts only** for proposed directions that are not active detectors. Compatibility facades retain the existing `engine`, `parsers`, and `service` import paths.
+
+Use the versioned profiles instead of improvising test environments:
+
+```bash
+make test-core          # parser, models, features, rules, scoring
+make test-identity      # offline fixtures and verification behavior
+make test-service       # no-UI HTTP contract
+make test-controlled    # authorized campaign and evaluation contracts
+make test-research      # research gates, not experimental detection
+make smoke-service      # installed-wheel service process on loopback
+```
+
+Read [`docs/architecture/README.md`](docs/architecture/README.md), [`docs/cases-and-variations.md`](docs/cases-and-variations.md), and [`environments/README.md`](environments/README.md) before adding an environment, data source, or detector variant.
+
 ## Quick start
 
 Requires Python 3.11+.
@@ -287,6 +304,8 @@ Or:
 ```bash
 make check
 ```
+
+Run `make profile-matrix` to exercise every isolated variation plus the installed-wheel smoke contract. Its individual targets are `make test-core`, `make test-identity`, `make test-service`, `make test-research`, `make test-controlled`, `make test-evaluation`, `make package`, and `make smoke-service`. Each profile uses fixtures or loopback only; none refreshes external sources, captures browser traffic, or needs production secrets.
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
 
