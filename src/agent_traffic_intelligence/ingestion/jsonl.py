@@ -57,8 +57,12 @@ def pseudonymize_client(raw_address: str, hash_key: bytes) -> str:
 
     if not hash_key:
         raise ParseError("a non-empty hash key is required for raw client addresses")
+    try:
+        encoded_address = raw_address.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ParseError("client address must be valid UTF-8") from exc
     digest = hashlib.blake2b(
-        raw_address.encode("utf-8"), key=hash_key, digest_size=16, person=b"ati-client-v0"
+        encoded_address, key=hash_key, digest_size=16, person=b"ati-client-v0"
     ).hexdigest()
     return f"blake2b:{digest}"
 
@@ -120,7 +124,7 @@ def normalize_record(
     try:
         status = int(_required(record, "status"))
         bytes_sent = int(record.get("bytes_sent", record.get("body_bytes_sent", 0)) or 0)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ParseError("status and bytes fields must be integers") from exc
     if not 100 <= status <= 599:
         raise ParseError("status must be a valid HTTP status")
