@@ -22,6 +22,31 @@ For an Nginx JSONL adapter, the relevant field is conceptually:
 
 Do not log the complete header set merely to support this feature. The adapter should emit only `ati_campaign_id` and the existing allowlisted access fields.
 
+## Plan and validate a sessionized campaign
+
+For the cookie-free navigation laboratory, create a non-secret plan before editing the Worker allowlist or sending traffic. A plan declares the route catalogue, runtime families, expected User-Agent tokens, session count and mandatory leakage controls. It is not an access log, label set or secret store.
+
+```bash
+ati campaign plan \
+  --campaign-id 'owned-general-2026-08-21-playwright' \
+  --corpus-id 'generalization-2026-08' \
+  --family 'playwright=HeadlessChrome' \
+  --family 'human-chrome=Chrome' \
+  --sessions-per-family 20 \
+  --output campaign-plan.json
+```
+
+After collecting privacy-safe rows, validate each declared runtime family before treating its labels as usable. The command emits only aggregate counts: it does not copy session values or User-Agent strings into its result.
+
+```bash
+ati campaign runtime-validate access.jsonl \
+  --campaign-id 'owned-general-2026-08-21-playwright' \
+  --expected-ua-token 'HeadlessChrome' \
+  --output runtime-playwright.json
+```
+
+A result is `ready` only when the campaign has at least one observation, every matching row has a valid opaque session pseudonym and every observed User-Agent contains the declared token. A `review-required` result must not be silently relabeled; inspect the controlled runtime, proxy contract and collection window first.
+
 ## Run a campaign
 
 Create a local manifest before using outputs for any benchmark, threshold, or model decision. The manifest remains local and uses the existing authorized-corpus format from [evaluation.md](evaluation.md). Set its `corpus_id` to a non-sensitive name, record the actual collection window, and declare `controlled-traffic-overrepresentation` as a known sampling bias.

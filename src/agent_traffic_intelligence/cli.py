@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import TextIO
 
 from agent_traffic_intelligence import __version__
+from agent_traffic_intelligence.campaign_protocol import (
+    build_navigation_campaign_plan,
+    validate_campaign_runtime,
+)
 from agent_traffic_intelligence.engine import Detector
 from agent_traffic_intelligence.evaluation import (
     EvaluationError,
@@ -149,6 +153,45 @@ def _parser() -> argparse.ArgumentParser:
         "--hash-key-env",
         default="ATI_HASH_KEY",
         help="Environment variable containing the client pseudonymization key.",
+    )
+    campaign_plan = campaign_sub.add_parser(
+        "plan",
+        help="Write a privacy-safe navigation campaign plan without secrets.",
+    )
+    campaign_plan.add_argument("--campaign-id", required=True, help="Opaque allowlisted marker.")
+    campaign_plan.add_argument(
+        "--corpus-id", required=True, help="Authorized local corpus identifier."
+    )
+    campaign_plan.add_argument(
+        "--family",
+        action="append",
+        required=True,
+        help="Runtime family as name=expected-user-agent-token; repeat for each family.",
+    )
+    campaign_plan.add_argument(
+        "--sessions-per-family",
+        type=_positive_integer,
+        required=True,
+        help="Planned independent sessions for each runtime family.",
+    )
+    campaign_plan.add_argument("--output", required=True, help="New local JSON plan path.")
+    runtime_validate = campaign_sub.add_parser(
+        "runtime-validate",
+        help="Summarize declared campaign runtime compatibility from privacy-safe JSONL.",
+    )
+    runtime_validate.add_argument("input", help="Privacy-safe access-log JSONL path.")
+    runtime_validate.add_argument("--campaign-id", required=True, help="Opaque campaign marker.")
+    runtime_validate.add_argument(
+        "--expected-ua-token",
+        required=True,
+        help="Expected non-sensitive User-Agent token for this declared runtime.",
+    )
+    runtime_validate.add_argument("--output", required=True, help="Local JSON summary path.")
+    runtime_validate.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
     )
 
     registry = subparsers.add_parser("registry", help="Inspect the curated agent registry.")
@@ -400,6 +443,53 @@ def _campaign_labels(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(f"generated_label_count={generated}", file=sys.stderr)
+    return 0
+
+
+def _campaign_families(values: Sequence[str]) -> dict[str, str]:
+    families: dict[str, str] = {}
+    for value in values:
+        name, separator, ua_token = value.partition("=")
+        if not separator or not name.strip() or not ua_token.strip():
+            raise EvaluationError("family must use name=expected-user-agent-token")
+        if name in families:
+            raise EvaluationError(f"duplicate runtime family: {name}")
+        families[name] = ua_token
+    return families
+
+
+def _campaign_plan(args: argparse.Namespace) -> int:
+    try:
+        plan = build_navigation_campaign_plan(
+            campaign_id=args.campaign_id,
+            corpus_id=args.corpus_id,
+            families=_campaign_families(args.family),
+            sessions_per_family=args.sessions_per_family,
+        )
+        _write_json(Path(args.output), plan)
+    except (EvaluationError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({"output": args.output, "protocol": plan["protocol"]}, sort_keys=True))
+    return 0
+
+
+def _campaign_runtime_validate(args: argparse.Namespace) -> int:
+    try:
+        result = validate_campaign_runtime(
+            _iter_json_objects(
+                Path(args.input),
+                kind="access-log",
+                max_line_characters=args.max_line_characters,
+            ),
+            campaign_id=args.campaign_id,
+            expected_ua_token=args.expected_ua_token,
+        )
+        _write_json(Path(args.output), result)
+    except (EvaluationError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 
@@ -747,6 +837,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _evaluate(args)
     if args.command == "campaign" and args.campaign_command == "labels":
         return _campaign_labels(args)
+    if args.command == "campaign" and args.campaign_command == "plan":
+        return _campaign_plan(args)
+    if args.command == "campaign" and args.campaign_command == "runtime-validate":
+        return _campaign_runtime_validate(args)
     if args.command == "registry" and args.registry_command == "validate":
         return _registry_validate()
     if args.command == "sources" and args.sources_command == "status":
