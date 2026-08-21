@@ -62,6 +62,27 @@ The output contains the confusion matrix, precision, recall, F1, accuracy, Brier
 
 > Brier score and expected calibration error are score-quality diagnostics, not proof of calibration. Expected calibration error uses ten fixed-width score bins and should be interpreted with the corpus size and score distribution. Probability calibration and learned detection still require a time-aware, authorized corpus using the leakage controls above.
 
+## Stratified holdout evaluation
+
+Use `ati evaluate-stratified` only with an authorized manifest and a separate local metadata JSONL. It reports the same metrics overall and by temporal day, declared family and `provider=<declared-provider>|ua=<coarse-bucket>`. It also reports only the number of opaque session groups and missing-session rows. The output intentionally omits raw request IDs, session pseudonyms and full User-Agent strings.
+
+```bash
+ati evaluate-stratified detections.jsonl \
+  --labels labels.jsonl \
+  --metadata stratified-metadata.jsonl \
+  --manifest corpus-manifest.json \
+  --output stratified-evaluation.json \
+  --threshold 0.5
+```
+
+Each metadata line has this exact local-only schema:
+
+```json
+{"request_id":"privacy-safe-request-id","session_id":"hmac-sha256:<64-lowercase-hex>","family":"playwright","provider":"none","ua_bucket":"headless-chrome","time_iso8601":"2026-08-21T09:00:00+00:00"}
+```
+
+The metadata adapter rejects extra fields, duplicate request IDs, missing declared fields and invalid opaque session values. Treat `missing_metadata_count` or `sessionless_request_count` as a leakage-control failure, not as evidence about detection accuracy. A split with only one session or one family is a conformance slice; it cannot establish temporal, family or provider/UA generalization.
+
 ## Corpus handling
 
 Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
