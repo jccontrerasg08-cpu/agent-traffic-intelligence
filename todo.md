@@ -101,3 +101,11 @@
 - [x] Auditar los contratos versionados, pruebas y documentación para mapear las variables observables, declaradas y explícitamente no observables.
 - [x] Contrastar los hallazgos con Railway y Cloudflare en modo de sólo lectura, sin modificar dominios, despliegues, secretos, reglas ni retención.
 - [x] Consolidar las ramas verificadas, límites, contradicciones y próximos experimentos mínimos en una evidencia publicable.
+
+## Verificación independiente del perímetro Cloudflare → Railway — en curso
+
+- [x] Extraer del informe adjunto únicamente las afirmaciones verificables y clasificarlas como confirmadas, refutadas o pendientes.
+- [x] Inspeccionar en modo de sólo lectura los recursos Cloudflare que puedan demostrar Worker, rutas, secretos configurados por nombre y reglas aplicables, sin revelar valores.
+- [x] Contrastar el contrato público del Worker y el origen Railway con solicitudes anónimas y sintéticas que no transporten secretos, credenciales ni eventos de campaña.
+- [x] Revisar los MCP disponibles y documentar cuáles aportan evidencia técnica y cuáles no son pertinentes para este perímetro.
+- [ ] Registrar contradicciones, dependencias y próximos pasos mínimos, y publicar la evidencia mediante revisión protegida si resulta material.
