@@ -22,6 +22,7 @@ from agent_traffic_intelligence.engine import Detector
 from agent_traffic_intelligence.evaluation import (
     EvaluationError,
     evaluate_automation_scores,
+    evaluate_stratified_automation_scores,
     validate_corpus_manifest,
 )
 from agent_traffic_intelligence.features.session import SessionFeatureState
@@ -113,6 +114,36 @@ def _parser() -> argparse.ArgumentParser:
         help="Automation decision threshold from 0 to 1 (default: 0.5).",
     )
     evaluate.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+
+    evaluate_stratified = subparsers.add_parser(
+        "evaluate-stratified",
+        help="Evaluate grouped, temporal, family and provider/UA holdout strata.",
+    )
+    evaluate_stratified.add_argument("input", help="Detection JSONL file.")
+    evaluate_stratified.add_argument(
+        "--labels", required=True, help="Authorized local JSONL labels."
+    )
+    evaluate_stratified.add_argument(
+        "--metadata",
+        required=True,
+        help="Local JSONL with opaque session, declared family/provider/UA bucket and time.",
+    )
+    evaluate_stratified.add_argument(
+        "--manifest", required=True, help="Authorized local corpus manifest."
+    )
+    evaluate_stratified.add_argument("--output", required=True, help="Local JSON aggregate result.")
+    evaluate_stratified.add_argument(
+        "--threshold",
+        type=_unit_interval,
+        default=0.5,
+        help="Automation decision threshold from 0 to 1 (default: 0.5).",
+    )
+    evaluate_stratified.add_argument(
         "--max-line-characters",
         type=_positive_integer,
         default=1_000_000,
@@ -641,6 +672,62 @@ def _evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_stratified_metadata(
+    path: Path, *, max_line_characters: int
+) -> dict[str, dict[str, object]]:
+    fields = {
+        "request_id",
+        "session_id",
+        "family",
+        "provider",
+        "ua_bucket",
+        "time_iso8601",
+    }
+    metadata: dict[str, dict[str, object]] = {}
+    for payload in _iter_json_objects(
+        path, kind="stratified metadata", max_line_characters=max_line_characters
+    ):
+        if set(payload) != fields:
+            raise EvaluationError("stratified metadata has unsupported or missing fields")
+        request_id = payload["request_id"]
+        if not isinstance(request_id, str) or not request_id:
+            raise EvaluationError("stratified metadata request_id must be a non-empty string")
+        if request_id in metadata:
+            raise EvaluationError(f"duplicate stratified metadata request_id: {request_id}")
+        metadata[request_id] = payload
+    return metadata
+
+
+def _evaluate_stratified(args: argparse.Namespace) -> int:
+    try:
+        corpus_id = _load_corpus_manifest(
+            Path(args.manifest), max_characters=args.max_line_characters
+        )
+        labels = _load_automation_labels(
+            Path(args.labels),
+            max_line_characters=args.max_line_characters,
+            corpus_id=corpus_id,
+        )
+        result = evaluate_stratified_automation_scores(
+            _iter_json_objects(
+                Path(args.input),
+                kind="detection",
+                max_line_characters=args.max_line_characters,
+            ),
+            labels,
+            _load_stratified_metadata(
+                Path(args.metadata), max_line_characters=args.max_line_characters
+            ),
+            threshold=args.threshold,
+        )
+        _write_json(Path(args.output), result)
+    except (EvaluationError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
 def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     with _atomic_output(path) as stream:
         json.dump(payload, stream, indent=2, sort_keys=True)
@@ -835,6 +922,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _explain(args)
     if args.command == "evaluate":
         return _evaluate(args)
+    if args.command == "evaluate-stratified":
+        return _evaluate_stratified(args)
     if args.command == "campaign" and args.campaign_command == "labels":
         return _campaign_labels(args)
     if args.command == "campaign" and args.campaign_command == "plan":

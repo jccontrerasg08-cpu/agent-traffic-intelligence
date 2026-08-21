@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -287,3 +288,116 @@ def evaluate_automation_scores(
         expected_calibration_error=_expected_calibration_error(scored_labels),
         threshold=threshold,
     )
+
+
+_SESSION_ID = re.compile(r"^hmac-sha256:[0-9a-f]{64}$")
+
+
+def _stratified_metadata(
+    request_id: str, metadata: Mapping[str, Any]
+) -> tuple[str | None, str, str, str, str]:
+    session_id = metadata.get("session_id")
+    if session_id is not None and (
+        not isinstance(session_id, str) or not _SESSION_ID.fullmatch(session_id)
+    ):
+        raise EvaluationError(f"metadata session_id is invalid for request_id: {request_id}")
+    values: list[str] = []
+    for field in ("family", "provider", "ua_bucket", "time_iso8601"):
+        value = metadata.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise EvaluationError(
+                f"metadata {field} must be non-empty for request_id: {request_id}"
+            )
+        values.append(value)
+    try:
+        observed_at = datetime.fromisoformat(values[3])
+    except ValueError as exc:
+        raise EvaluationError(
+            f"metadata time_iso8601 must be ISO 8601 for request_id: {request_id}"
+        ) from exc
+    if observed_at.tzinfo is None:
+        raise EvaluationError(
+            f"metadata time_iso8601 must include a timezone for request_id: {request_id}"
+        )
+    return session_id, values[0], values[1], values[2], observed_at.date().isoformat()
+
+
+def _stratified_metrics(
+    detections: list[Mapping[str, Any]], labels: Mapping[str, bool], threshold: float
+) -> dict[str, int | float | None]:
+    return evaluate_automation_scores(detections, labels, threshold=threshold).to_dict()
+
+
+def evaluate_stratified_automation_scores(
+    detections: Iterable[Mapping[str, Any]],
+    labels: Mapping[str, bool],
+    metadata_by_request_id: Mapping[str, Mapping[str, Any]],
+    *,
+    threshold: float = 0.5,
+) -> dict[str, Any]:
+    """Evaluate labeled detections by temporal, family and provider/UA holdout strata.
+
+    Metadata is supplied locally and may contain only an opaque session pseudonym plus
+    declared family, provider and coarse User-Agent bucket. The result reports group
+    counts and metrics, never raw sessions, request identifiers or User-Agent strings.
+    """
+
+    materialized = list(detections)
+    overall = _stratified_metrics(materialized, labels, threshold)
+    by_family: dict[str, list[Mapping[str, Any]]] = {}
+    by_day: dict[str, list[Mapping[str, Any]]] = {}
+    by_provider_ua: dict[str, list[Mapping[str, Any]]] = {}
+    selected_labels: dict[str, bool] = {}
+    sessions: set[str] = set()
+    missing_metadata = sessionless = 0
+
+    for detection in materialized:
+        request_id, _ = _automation_score(detection)
+        if request_id not in labels:
+            continue
+        metadata = metadata_by_request_id.get(request_id)
+        if metadata is None:
+            missing_metadata += 1
+            continue
+        session_id, family, provider, ua_bucket, day = _stratified_metadata(request_id, metadata)
+        if session_id is None:
+            sessionless += 1
+            continue
+        sessions.add(session_id)
+        selected_labels[request_id] = labels[request_id]
+        by_family.setdefault(family, []).append(detection)
+        by_day.setdefault(day, []).append(detection)
+        by_provider_ua.setdefault(f"provider={provider}|ua={ua_bucket}", []).append(detection)
+
+    def summarize(
+        groups: Mapping[str, list[Mapping[str, Any]]]
+    ) -> dict[str, dict[str, int | float | None]]:
+        return {
+            name: _stratified_metrics(
+                group,
+                {
+                    request_id: selected_labels[request_id]
+                    for request_id, _ in map(_automation_score, group)
+                },
+                threshold,
+            )
+            for name, group in sorted(groups.items())
+        }
+
+    return {
+        "overall": overall,
+        "integrity": {
+            "missing_metadata_count": missing_metadata,
+            "session_group_count": len(sessions),
+            "sessionless_request_count": sessionless,
+        },
+        "splits": {
+            "grouped_session_client": {
+                "session_group_count": len(sessions),
+                "sessionless_request_count": sessionless,
+            },
+            "temporal_holdout": summarize(by_day),
+            "unseen_family_holdout": summarize(by_family),
+            "provider_ua_ablation": summarize(by_provider_ua),
+        },
+    }
