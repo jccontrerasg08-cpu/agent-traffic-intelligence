@@ -51,6 +51,10 @@ from agent_traffic_intelligence.parsers.jsonl import (
     iter_jsonl,
     iter_jsonl_with_context,
 )
+from agent_traffic_intelligence.pf2_protocol import (
+    PF2ProtocolError,
+    prepare_pf2_dataset,
+)
 from agent_traffic_intelligence.registry import AgentRegistry
 
 
@@ -144,6 +148,49 @@ def _parser() -> argparse.ArgumentParser:
         help="Automation decision threshold from 0 to 1 (default: 0.5).",
     )
     evaluate_stratified.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+
+    pf2_preflight = subparsers.add_parser(
+        "pf2-preflight",
+        help="Prepare privacy-first ATI-PF-2 session features for a local baseline.",
+    )
+    pf2_preflight.add_argument("input", help="Authorized local ATI-PF-2 access-log JSONL.")
+    pf2_preflight.add_argument(
+        "--labels-by-session",
+        required=True,
+        help="Local JSON object mapping opaque session IDs to boolean targets.",
+    )
+    pf2_preflight.add_argument(
+        "--tasks-by-session",
+        required=True,
+        help="Local JSON object mapping opaque session IDs to audit-only task names.",
+    )
+    pf2_preflight.add_argument(
+        "--model-output",
+        required=True,
+        help="New JSONL path for target plus allowed model features only.",
+    )
+    pf2_preflight.add_argument(
+        "--split-output",
+        required=True,
+        help="New JSONL path for separate local session/task split metadata.",
+    )
+    pf2_preflight.add_argument(
+        "--preflight-output",
+        required=True,
+        help="New JSON path for aggregate readiness checks.",
+    )
+    pf2_preflight.add_argument(
+        "--min-sessions-per-task-class",
+        type=_positive_integer,
+        default=8,
+        help="Required complete sessions per task and class (default: 8).",
+    )
+    pf2_preflight.add_argument(
         "--max-line-characters",
         type=_positive_integer,
         default=1_000_000,
@@ -656,6 +703,86 @@ def _evaluate_files(
     return result.to_dict(), corpus_id
 
 
+def _load_json_object(path: Path, *, kind: str, max_characters: int) -> dict[str, object]:
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            content = stream.read(max_characters + 1)
+    except OSError as exc:
+        raise EvaluationError(f"cannot read {kind}: {exc}") from exc
+    if len(content) > max_characters:
+        raise EvaluationError(f"{kind} exceeds character limit of {max_characters}")
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise EvaluationError(f"{kind} has invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise EvaluationError(f"{kind} expects one JSON object")
+    return payload
+
+
+def _write_jsonl(path: Path, rows: Sequence[Mapping[str, object]]) -> None:
+    with _atomic_output(path) as stream:
+        for row in rows:
+            stream.write(_json_line(dict(row)))
+
+
+def _pf2_preflight(args: argparse.Namespace) -> int:
+    try:
+        labels = _load_json_object(
+            Path(args.labels_by_session),
+            kind="ATI-PF-2 labels",
+            max_characters=args.max_line_characters,
+        )
+        tasks = _load_json_object(
+            Path(args.tasks_by_session),
+            kind="ATI-PF-2 task metadata",
+            max_characters=args.max_line_characters,
+        )
+        if any(
+            not isinstance(session_id, str) or not isinstance(automated, bool)
+            for session_id, automated in labels.items()
+        ):
+            raise EvaluationError("ATI-PF-2 labels must map session strings to boolean targets")
+        if any(
+            not isinstance(session_id, str) or not isinstance(task, str)
+            for session_id, task in tasks.items()
+        ):
+            raise EvaluationError("ATI-PF-2 task metadata must map session strings to task strings")
+        labels_by_session: dict[str, bool] = {
+            session_id: automated
+            for session_id, automated in labels.items()
+            if isinstance(session_id, str) and isinstance(automated, bool)
+        }
+        task_by_session: dict[str, str] = {
+            session_id: task
+            for session_id, task in tasks.items()
+            if isinstance(session_id, str) and isinstance(task, str)
+        }
+        dataset = prepare_pf2_dataset(
+            _iter_json_objects(
+                Path(args.input),
+                kind="ATI-PF-2 access-log",
+                max_line_characters=args.max_line_characters,
+            ),
+            labels_by_session=labels_by_session,
+            task_by_session=task_by_session,
+            min_sessions_per_task_class=args.min_sessions_per_task_class,
+        )
+        _write_jsonl(Path(args.model_output), dataset.model_rows)
+        _write_jsonl(Path(args.split_output), dataset.split_rows)
+        _write_json(Path(args.preflight_output), dataset.preflight)
+    except (EvaluationError, OSError, PF2ProtocolError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(
+            {"preflight_output": args.preflight_output, "status": dataset.preflight["status"]},
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def _evaluate(args: argparse.Namespace) -> int:
     try:
         result, _ = _evaluate_files(
@@ -922,6 +1049,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _explain(args)
     if args.command == "evaluate":
         return _evaluate(args)
+    if args.command == "pf2-preflight":
+        return _pf2_preflight(args)
     if args.command == "evaluate-stratified":
         return _evaluate_stratified(args)
     if args.command == "campaign" and args.campaign_command == "labels":

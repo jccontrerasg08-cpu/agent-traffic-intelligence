@@ -83,6 +83,27 @@ Each metadata line has this exact local-only schema:
 
 The metadata adapter rejects extra fields, duplicate request IDs, missing declared fields and invalid opaque session values. Treat `missing_metadata_count` or `sessionless_request_count` as a leakage-control failure, not as evidence about detection accuracy. A split with only one session or one family is a conformance slice; it cannot establish temporal, family or provider/UA generalization.
 
+## ATI-PF-2 session preflight
+
+`ati pf2-preflight` prepares a **local controlled-lab** table for a future baseline only after it enforces the ATI-PF-2 feature firewall. It accepts an authorized access-log JSONL plus two local JSON objects: one maps opaque session pseudonyms to explicit boolean targets and the other maps the same opaque sessions to audit-only task labels. It writes three paths atomically:
+
+| Artifact | Contents | Permitted use |
+|---|---|---|
+| Model JSONL | `automated` target and fixed route-category, transition, method/status, completion and coarse delay/duration-bin features | Candidate estimator input after a separately frozen split. |
+| Split JSONL | Row index, opaque session pseudonym and audit-only task label | Group and task holdout construction only. Never pass it to an estimator. |
+| Preflight JSON | Aggregate counts and one readiness status | Collection-quality gate only. |
+
+```bash
+ati pf2-preflight access.jsonl \
+  --labels-by-session labels-by-session.json \
+  --tasks-by-session tasks-by-session.json \
+  --model-output model.jsonl \
+  --split-output splits.jsonl \
+  --preflight-output preflight.json
+```
+
+The command rejects unapproved or integrity-only routes, non-GET/HEAD records, invalid statuses, missing targets, absent labeled sessions and task×class cells below the configured floor. Exact timestamps are used in memory only to form four fixed delay bins and one duration bucket; no timestamp or opaque identifier is emitted to the model table. It reports `blocked-no-feature-variation` if all allowed features are constant and `blocked-no-task-holdout` if there are fewer than two shared tasks. `ready-for-baseline` means only that those **collection gates** passed; it does not establish generalization, calibration, a population FPR or an operating threshold.
+
 ## Corpus handling
 
 Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
