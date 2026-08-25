@@ -170,6 +170,10 @@ def _parser() -> argparse.ArgumentParser:
         help="Local JSON object mapping opaque session IDs to audit-only task names.",
     )
     pf2_preflight.add_argument(
+        "--collection-windows-by-session",
+        help="Optional local JSON object mapping opaque session IDs to audit-only windows.",
+    )
+    pf2_preflight.add_argument(
         "--model-output",
         required=True,
         help="New JSONL path for target plus allowed model features only.",
@@ -738,6 +742,15 @@ def _pf2_preflight(args: argparse.Namespace) -> int:
             kind="ATI-PF-2 task metadata",
             max_characters=args.max_line_characters,
         )
+        windows = (
+            _load_json_object(
+                Path(args.collection_windows_by_session),
+                kind="ATI-PF-2 collection-window metadata",
+                max_characters=args.max_line_characters,
+            )
+            if args.collection_windows_by_session is not None
+            else None
+        )
         if any(
             not isinstance(session_id, str) or not isinstance(automated, bool)
             for session_id, automated in labels.items()
@@ -758,6 +771,22 @@ def _pf2_preflight(args: argparse.Namespace) -> int:
             for session_id, task in tasks.items()
             if isinstance(session_id, str) and isinstance(task, str)
         }
+        if windows is not None and any(
+            not isinstance(session_id, str) or not isinstance(window, str)
+            for session_id, window in windows.items()
+        ):
+            raise EvaluationError(
+                "ATI-PF-2 collection-window metadata must map session strings to window strings"
+            )
+        collection_window_by_session = (
+            {
+                session_id: window
+                for session_id, window in windows.items()
+                if isinstance(session_id, str) and isinstance(window, str)
+            }
+            if windows is not None
+            else None
+        )
         dataset = prepare_pf2_dataset(
             _iter_json_objects(
                 Path(args.input),
@@ -766,6 +795,7 @@ def _pf2_preflight(args: argparse.Namespace) -> int:
             ),
             labels_by_session=labels_by_session,
             task_by_session=task_by_session,
+            collection_window_by_session=collection_window_by_session,
             min_sessions_per_task_class=args.min_sessions_per_task_class,
         )
         _write_jsonl(Path(args.model_output), dataset.model_rows)

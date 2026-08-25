@@ -131,6 +131,7 @@ def test_pf2_preflight_cli_writes_model_and_split_artifacts_separately(
     records_path = tmp_path / "records.jsonl"
     labels_path = tmp_path / "labels.json"
     tasks_path = tmp_path / "tasks.json"
+    windows_path = tmp_path / "windows.json"
     model_path = tmp_path / "model.jsonl"
     split_path = tmp_path / "split.jsonl"
     preflight_path = tmp_path / "preflight.json"
@@ -144,6 +145,10 @@ def test_pf2_preflight_cli_writes_model_and_split_artifacts_separately(
     tasks_path.write_text(
         __import__("json").dumps({automated: "task-a", human: "task-a"}), encoding="utf-8"
     )
+    windows_path.write_text(
+        __import__("json").dumps({automated: "window-a", human: "window-a"}),
+        encoding="utf-8",
+    )
 
     assert (
         cli.main(
@@ -154,6 +159,8 @@ def test_pf2_preflight_cli_writes_model_and_split_artifacts_separately(
                 str(labels_path),
                 "--tasks-by-session",
                 str(tasks_path),
+                "--collection-windows-by-session",
+                str(windows_path),
                 "--model-output",
                 str(model_path),
                 "--split-output",
@@ -171,12 +178,14 @@ def test_pf2_preflight_cli_writes_model_and_split_artifacts_separately(
     preflight_serialized = preflight_path.read_text(encoding="utf-8")
     split_serialized = split_path.read_text(encoding="utf-8")
     assert '"session_id"' not in model_serialized
+    assert '"collection_window"' not in model_serialized
     assert automated not in model_serialized
     assert human not in model_serialized
     assert automated not in preflight_serialized
     assert human not in preflight_serialized
     assert automated in split_serialized
     assert human in split_serialized
+    assert '"collection_window":"window-a"' in split_serialized
     assert '"status": "blocked-no-task-holdout"' in preflight_serialized
     assert automated not in capsys.readouterr().out
 
@@ -224,3 +233,47 @@ def test_pf2_preflight_blocks_baseline_without_a_task_holdout() -> None:
     )
 
     assert dataset.preflight["status"] == "blocked-no-task-holdout"
+
+
+def test_pf2_preflight_blocks_baseline_without_temporal_holdout() -> None:
+    from agent_traffic_intelligence.pf2_protocol import prepare_pf2_dataset
+
+    automated_a = _session("5")
+    human_a = _session("6")
+    automated_b = _session("7")
+    human_b = _session("8")
+    sessions = (automated_a, human_a, automated_b, human_b)
+    records = [
+        record
+        for session_id, route in (
+            (automated_a, "/lab/page/related"),
+            (human_a, "/lab/page/detail"),
+            (automated_b, "/lab/page/related"),
+            (human_b, "/lab/page/detail"),
+        )
+        for record in (
+            _record(session_id, "/lab/start", 0),
+            _record(session_id, route, 3),
+            _record(session_id, "/lab/complete", 9),
+        )
+    ]
+
+    dataset = prepare_pf2_dataset(
+        records,
+        labels_by_session={
+            automated_a: True,
+            human_a: False,
+            automated_b: True,
+            human_b: False,
+        },
+        task_by_session={
+            automated_a: "task-a",
+            human_a: "task-a",
+            automated_b: "task-b",
+            human_b: "task-b",
+        },
+        collection_window_by_session={session_id: "window-a" for session_id in sessions},
+        min_sessions_per_task_class=1,
+    )
+
+    assert dataset.preflight["status"] == "blocked-no-temporal-holdout"

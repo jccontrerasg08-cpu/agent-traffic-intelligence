@@ -173,6 +173,7 @@ def prepare_pf2_dataset(
     *,
     labels_by_session: Mapping[str, bool],
     task_by_session: Mapping[str, str],
+    collection_window_by_session: Mapping[str, str] | None = None,
     min_sessions_per_task_class: int = 8,
 ) -> PF2PreparedDataset:
     """Prepare fixed-width, session-level model rows and fail closed on coverage gaps.
@@ -185,6 +186,18 @@ def prepare_pf2_dataset(
     if min_sessions_per_task_class < 1:
         raise PF2ProtocolError("min_sessions_per_task_class must be positive")
     _validate_labels_and_tasks(labels_by_session, task_by_session)
+    if collection_window_by_session is not None:
+        if set(collection_window_by_session) != set(labels_by_session):
+            raise PF2ProtocolError(
+                "collection_window_by_session must cover the same sessions as labels"
+            )
+        if any(
+            not isinstance(window, str) or not window.strip()
+            for window in collection_window_by_session.values()
+        ):
+            raise PF2ProtocolError(
+                "collection_window_by_session values must be non-empty audit labels"
+            )
     grouped: dict[str, list[tuple[str, str, int, datetime]]] = defaultdict(list)
     for record in records:
         session_id, category, method, status, observed_at = _parse_record(record)
@@ -208,6 +221,14 @@ def prepare_pf2_dataset(
                 f"{min_sessions_per_task_class} sessions per class"
             )
 
+    window_coverage: dict[str, Counter[bool]] = defaultdict(Counter)
+    if collection_window_by_session is not None:
+        for session_id, window in collection_window_by_session.items():
+            window_coverage[window][labels_by_session[session_id]] += 1
+        for window, counts in window_coverage.items():
+            if set(counts) != {False, True}:
+                raise PF2ProtocolError(f"collection window {window!r} must contain both classes")
+
     ordered_session_ids = tuple(sorted(grouped))
     model_rows = tuple(
         _session_features(grouped[session_id], automated=labels_by_session[session_id])
@@ -218,6 +239,11 @@ def prepare_pf2_dataset(
             "row_index": row_index,
             "session_id": session_id,
             "task": task_by_session[session_id],
+            **(
+                {"collection_window": collection_window_by_session[session_id]}
+                if collection_window_by_session is not None
+                else {}
+            ),
         }
         for row_index, session_id in enumerate(ordered_session_ids)
     )
@@ -230,6 +256,8 @@ def prepare_pf2_dataset(
         if not varying_feature_count
         else "blocked-no-task-holdout"
         if len(coverage) < 2
+        else "blocked-no-temporal-holdout"
+        if len(window_coverage) < 2
         else "ready-for-baseline"
     )
     preflight: dict[str, int | str] = {
@@ -238,6 +266,7 @@ def prepare_pf2_dataset(
         "feature_count": len(feature_names),
         "varying_feature_count": varying_feature_count,
         "task_count": len(coverage),
+        "collection_window_count": len(window_coverage),
         "automated_session_count": sum(labels_by_session.values()),
         "human_assisted_session_count": sum(not value for value in labels_by_session.values()),
     }
