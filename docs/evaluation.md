@@ -97,12 +97,13 @@ The metadata adapter rejects extra fields, duplicate request IDs, missing declar
 ati pf2-preflight access.jsonl \
   --labels-by-session labels-by-session.json \
   --tasks-by-session tasks-by-session.json \
+  --collection-windows-by-session collection-windows.json \
   --model-output model.jsonl \
   --split-output splits.jsonl \
   --preflight-output preflight.json
 ```
 
-The command rejects unapproved or integrity-only routes, non-GET/HEAD records, invalid statuses, missing targets, absent labeled sessions and task×class cells below the configured floor. Exact timestamps are used in memory only to form four fixed delay bins and one duration bucket; no timestamp or opaque identifier is emitted to the model table. It reports `blocked-no-feature-variation` if all allowed features are constant and `blocked-no-task-holdout` if there are fewer than two shared tasks. `ready-for-baseline` means only that those **collection gates** passed; it does not establish generalization, calibration, a population FPR or an operating threshold.
+The command rejects unapproved or integrity-only routes, non-GET/HEAD records, invalid statuses, missing targets, absent labeled sessions and task×class cells below the configured floor. Exact timestamps are used in memory only to form four fixed delay bins and one duration bucket; no timestamp or opaque identifier is emitted to the model table. Collection windows are local audit/split labels, never model columns. It reports `blocked-no-feature-variation` if all allowed features are constant, `blocked-no-task-holdout` if there are fewer than two shared tasks, and `blocked-no-temporal-holdout` if fewer than two declared collection windows are available. `ready-for-baseline` means only that those **collection gates** passed; it does not establish generalization, calibration, a population FPR or an operating threshold.
 
 ## Corpus handling
 
