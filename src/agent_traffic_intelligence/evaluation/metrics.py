@@ -79,7 +79,7 @@ class AutomationEvaluation:
         }
 
 
-def _pr_auc(scored_labels: list[tuple[float, bool]]) -> float | None:
+def pr_auc(scored_labels: list[tuple[float, bool]]) -> float | None:
     """Calculate threshold-based average precision, or None without positives."""
 
     positive_count = sum(label for _, label in scored_labels)
@@ -108,7 +108,7 @@ def _pr_auc(scored_labels: list[tuple[float, bool]]) -> float | None:
     return area
 
 
-def _expected_calibration_error(scored_labels: list[tuple[float, bool]]) -> float | None:
+def expected_calibration_error(scored_labels: list[tuple[float, bool]]) -> float | None:
     """Calculate ECE with ten fixed-width confidence bins."""
 
     if not scored_labels:
@@ -284,8 +284,8 @@ def evaluate_automation_scores(
         false_negative_rate=(
             false_negative / positive_count if positive_count else None
         ),
-        pr_auc=_pr_auc(scored_labels),
-        expected_calibration_error=_expected_calibration_error(scored_labels),
+        pr_auc=pr_auc(scored_labels),
+        expected_calibration_error=expected_calibration_error(scored_labels),
         threshold=threshold,
     )
 

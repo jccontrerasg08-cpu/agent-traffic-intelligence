@@ -608,3 +608,325 @@ def test_explain_pretty_prints_evidence(tmp_path, monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert "known-agent-ua-claim" in output
     assert "identity_confidence" in output
+
+
+def write_pf2_corpus(path: Path) -> tuple[dict[str, bool], dict[str, str], dict[str, str]]:
+    """Write an authorized ATI-PF-2 access log with two tasks and two windows."""
+
+    labels: dict[str, bool] = {}
+    tasks: dict[str, str] = {}
+    windows: dict[str, str] = {}
+    lines: list[str] = []
+    for index in range(32):
+        automated = index % 2 == 0
+        session = "hmac-sha256:" + f"{index:064x}"
+        labels[session] = automated
+        tasks[session] = "task-detail" if index % 4 < 2 else "task-related"
+        windows[session] = "2026-09-26-am" if index < 16 else "2026-09-26-pm"
+        hour = 1 if index < 16 else 9
+        second = 0.0
+        for route in ("/lab/start", "/lab/page/landing", "/lab/page/catalog", "/lab/complete"):
+            second += 0.2 if automated else 6.0
+            moment = f"2026-09-26T{hour:02d}:{int(second) // 60:02d}:{int(second) % 60:02d}+00:00"
+            lines.append(
+                json.dumps(
+                    {
+                        "session_id": session,
+                        "request_uri": route,
+                        "request_method": "GET",
+                        "status": 200,
+                        "time_iso8601": moment,
+                    },
+                    sort_keys=True,
+                )
+            )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return labels, tasks, windows
+
+
+def run_pf2_preflight(tmp_path: Path) -> tuple[Path, Path]:
+    access_path = tmp_path / "access.jsonl"
+    labels, tasks, windows = write_pf2_corpus(access_path)
+    labels_path = tmp_path / "labels-by-session.json"
+    tasks_path = tmp_path / "tasks-by-session.json"
+    windows_path = tmp_path / "collection-windows.json"
+    labels_path.write_text(json.dumps(labels, sort_keys=True), encoding="utf-8")
+    tasks_path.write_text(json.dumps(tasks, sort_keys=True), encoding="utf-8")
+    windows_path.write_text(json.dumps(windows, sort_keys=True), encoding="utf-8")
+    model_path = tmp_path / "model.jsonl"
+    split_path = tmp_path / "splits.jsonl"
+    preflight_path = tmp_path / "preflight.json"
+    code = main(
+        [
+            "pf2-preflight",
+            str(access_path),
+            "--labels-by-session",
+            str(labels_path),
+            "--tasks-by-session",
+            str(tasks_path),
+            "--collection-windows-by-session",
+            str(windows_path),
+            "--model-output",
+            str(model_path),
+            "--split-output",
+            str(split_path),
+            "--preflight-output",
+            str(preflight_path),
+            "--min-sessions-per-task-class",
+            "4",
+        ]
+    )
+    assert code == 0
+    assert json.loads(preflight_path.read_text())["status"] == "ready-for-baseline"
+    return model_path, split_path
+
+
+def test_pf2_baseline_reports_the_ladder_for_a_ready_corpus(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    capsys.readouterr()
+    output_path = tmp_path / "baseline.json"
+
+    code = main(
+        [
+            "pf2-baseline",
+            str(model_path),
+            "--split-manifest",
+            str(split_path),
+            "--output",
+            str(output_path),
+            "--resamples",
+            "32",
+            "--seed",
+            "3",
+            "--target-false-positive-rate",
+            "0.1",
+        ]
+    )
+
+    assert code == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary == {"output": str(output_path), "status": "evaluated"}
+    report = json.loads(output_path.read_text())
+    assert report["status"] == "evaluated"
+    assert report["session_count"] == 32
+    assert report["firewall"]["train_holdout_session_overlap_count"] == 0
+    assert report["verdict"]["target_false_positive_rate"] == 0.1
+    assert "hmac-sha256:" not in output_path.read_text()
+
+
+def test_pf2_baseline_rejects_a_prohibited_model_column(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    capsys.readouterr()
+    rows = [json.loads(line) for line in model_path.read_text().splitlines()]
+    rows[0]["ua_provenance_bucket"] = "scripted-http"
+    model_path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8"
+    )
+    output_path = tmp_path / "baseline.json"
+
+    code = main(
+        [
+            "pf2-baseline",
+            str(model_path),
+            "--split-manifest",
+            str(split_path),
+            "--output",
+            str(output_path),
+            "--resamples",
+            "4",
+        ]
+    )
+
+    assert code == 2
+    assert "prohibited column" in capsys.readouterr().err
+    assert not output_path.exists()
+
+
+def test_pf2_baseline_rejects_split_metadata_with_an_experiment_label(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    capsys.readouterr()
+    rows = [json.loads(line) for line in split_path.read_text().splitlines()]
+    rows[0]["family"] = "playwright"
+    split_path.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8"
+    )
+    output_path = tmp_path / "baseline.json"
+
+    code = main(
+        [
+            "pf2-baseline",
+            str(model_path),
+            "--split-manifest",
+            str(split_path),
+            "--output",
+            str(output_path),
+            "--resamples",
+            "4",
+        ]
+    )
+
+    assert code == 2
+    assert "unsupported field" in capsys.readouterr().err
+    assert not output_path.exists()
+
+
+def test_pf2_baseline_rejects_oversized_model_lines(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    capsys.readouterr()
+    output_path = tmp_path / "baseline.json"
+
+    code = main(
+        [
+            "pf2-baseline",
+            str(model_path),
+            "--split-manifest",
+            str(split_path),
+            "--output",
+            str(output_path),
+            "--max-line-characters",
+            "10",
+        ]
+    )
+
+    assert code == 2
+    assert "character limit" in capsys.readouterr().err
+
+
+def test_pf2_export_bigquery_writes_aggregate_tables_atomically(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    report_path = tmp_path / "baseline.json"
+    assert (
+        main(
+            [
+                "pf2-baseline",
+                str(model_path),
+                "--split-manifest",
+                str(split_path),
+                "--output",
+                str(report_path),
+                "--resamples",
+                "16",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    export_dir = tmp_path / "export"
+
+    code = main(
+        [
+            "pf2-export-bigquery",
+            str(model_path),
+            "--report",
+            str(report_path),
+            "--output-dir",
+            str(export_dir),
+            "--run-id",
+            "run-2026-09-26",
+            "--corpus-id",
+            "controlled-pf2-2026-09",
+            "--dataset",
+            "ati_pf2",
+            "--exported-at",
+            "2026-09-26T12:00:00+00:00",
+        ]
+    )
+
+    assert code == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["output_dir"] == str(export_dir)
+    assert "pf2_baseline_metrics" in summary["tables"]
+    assert (export_dir / "ddl.sql").exists()
+    assert (export_dir / "export.json").exists()
+    for table in summary["tables"]:
+        assert (export_dir / f"{table}.ndjson").exists()
+        assert (export_dir / f"{table}.schema.json").exists()
+    # No artifact may carry an opaque session pseudonym out of the local corpus.
+    for artifact in export_dir.iterdir():
+        assert "hmac-sha256:" not in artifact.read_text(encoding="utf-8")
+
+
+def test_pf2_export_bigquery_refuses_an_existing_directory(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    report_path = tmp_path / "baseline.json"
+    assert (
+        main(
+            [
+                "pf2-baseline",
+                str(model_path),
+                "--split-manifest",
+                str(split_path),
+                "--output",
+                str(report_path),
+                "--resamples",
+                "16",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+
+    code = main(
+        [
+            "pf2-export-bigquery",
+            str(model_path),
+            "--report",
+            str(report_path),
+            "--output-dir",
+            str(export_dir),
+            "--run-id",
+            "run",
+            "--corpus-id",
+            "corpus",
+            "--dataset",
+            "ati_pf2",
+        ]
+    )
+
+    assert code == 2
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_pf2_export_bigquery_rejects_an_unsafe_dataset_name(tmp_path, capsys) -> None:
+    model_path, split_path = run_pf2_preflight(tmp_path)
+    report_path = tmp_path / "baseline.json"
+    assert (
+        main(
+            [
+                "pf2-baseline",
+                str(model_path),
+                "--split-manifest",
+                str(split_path),
+                "--output",
+                str(report_path),
+                "--resamples",
+                "16",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    export_dir = tmp_path / "export"
+
+    code = main(
+        [
+            "pf2-export-bigquery",
+            str(model_path),
+            "--report",
+            str(report_path),
+            "--output-dir",
+            str(export_dir),
+            "--run-id",
+            "run",
+            "--corpus-id",
+            "corpus",
+            "--dataset",
+            "ati_pf2; DROP SCHEMA other",
+        ]
+    )
+
+    assert code == 2
+    assert "alphanumeric BigQuery dataset" in capsys.readouterr().err
+    assert not export_dir.exists()
