@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import sys
 import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -50,6 +52,15 @@ from agent_traffic_intelligence.parsers.jsonl import (
     ParseError,
     iter_jsonl,
     iter_jsonl_with_context,
+)
+from agent_traffic_intelligence.pf2_baseline import (
+    PF2BaselineError,
+    evaluate_pf2_baseline,
+)
+from agent_traffic_intelligence.pf2_export import (
+    PF2ExportError,
+    bigquery_ddl,
+    build_bigquery_export,
 )
 from agent_traffic_intelligence.pf2_protocol import (
     PF2ProtocolError,
@@ -195,6 +206,87 @@ def _parser() -> argparse.ArgumentParser:
         help="Required complete sessions per task and class (default: 8).",
     )
     pf2_preflight.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+
+    pf2_baseline = subparsers.add_parser(
+        "pf2-baseline",
+        help="Run the ATI-PF-2 constant-prevalence and regularized-logistic baseline ladder.",
+    )
+    pf2_baseline.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
+    pf2_baseline.add_argument(
+        "--split-manifest",
+        required=True,
+        help="Local ATI-PF-2 preflight split JSONL; used only to build partitions.",
+    )
+    pf2_baseline.add_argument(
+        "--output",
+        required=True,
+        help="New JSON path for the ladder report, firewall assertions and verdict.",
+    )
+    pf2_baseline.add_argument(
+        "--l2",
+        type=_positive_float,
+        default=1.0,
+        help="L2 penalty strength for the logistic baseline (default: 1.0).",
+    )
+    pf2_baseline.add_argument(
+        "--target-false-positive-rate",
+        type=_unit_interval,
+        help="Predeclared operating point; the threshold is chosen on the train partition.",
+    )
+    pf2_baseline.add_argument(
+        "--resamples",
+        type=_positive_integer,
+        default=1000,
+        help="Session-cluster bootstrap resamples per reported metric (default: 1000).",
+    )
+    pf2_baseline.add_argument(
+        "--grouped-holdout-fraction",
+        type=_open_unit_interval,
+        default=0.25,
+        help="Share of opaque sessions held out by the grouped split (default: 0.25).",
+    )
+    pf2_baseline.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Deterministic seed for the grouped split and resampling (default: 0).",
+    )
+    pf2_baseline.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+
+    pf2_export = subparsers.add_parser(
+        "pf2-export-bigquery",
+        help="Write privacy-safe aggregate warehouse tables from one PF-2 baseline run.",
+    )
+    pf2_export.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
+    pf2_export.add_argument(
+        "--report", required=True, help="Local ATI-PF-2 baseline report JSON."
+    )
+    pf2_export.add_argument(
+        "--output-dir", required=True, help="New local directory for export artifacts."
+    )
+    pf2_export.add_argument("--run-id", required=True, help="Non-sensitive run identifier.")
+    pf2_export.add_argument(
+        "--corpus-id", required=True, help="Approved non-sensitive corpus identifier."
+    )
+    pf2_export.add_argument(
+        "--dataset", required=True, help="Target BigQuery dataset name for the DDL."
+    )
+    pf2_export.add_argument("--project", help="Optional BigQuery project for the DDL.")
+    pf2_export.add_argument(
+        "--exported-at",
+        help="Optional ISO 8601 export timestamp; defaults to the current UTC time.",
+    )
+    pf2_export.add_argument(
         "--max-line-characters",
         type=_positive_integer,
         default=1_000_000,
@@ -355,6 +447,23 @@ def _unit_interval(value: str) -> float:
         raise argparse.ArgumentTypeError("must be a number") from exc
     if not 0.0 <= parsed <= 1.0:
         raise argparse.ArgumentTypeError("must be between 0 and 1")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not parsed > 0.0 or not math.isfinite(parsed):
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return parsed
+
+
+def _open_unit_interval(value: str) -> float:
+    parsed = _unit_interval(value)
+    if parsed in {0.0, 1.0}:
+        raise argparse.ArgumentTypeError("must be strictly between 0 and 1")
     return parsed
 
 
@@ -705,6 +814,119 @@ def _evaluate_files(
         threshold=threshold,
     )
     return result.to_dict(), corpus_id
+
+
+def _pf2_baseline(args: argparse.Namespace) -> int:
+    try:
+        model_rows = list(
+            _iter_json_objects(
+                Path(args.model),
+                kind="ATI-PF-2 model-table",
+                max_line_characters=args.max_line_characters,
+            )
+        )
+        split_rows = list(
+            _iter_json_objects(
+                Path(args.split_manifest),
+                kind="ATI-PF-2 split manifest",
+                max_line_characters=args.max_line_characters,
+            )
+        )
+        report = evaluate_pf2_baseline(
+            model_rows,
+            split_rows,
+            l2=args.l2,
+            target_false_positive_rate=args.target_false_positive_rate,
+            resamples=args.resamples,
+            seed=args.seed,
+            grouped_holdout_fraction=args.grouped_holdout_fraction,
+        ).to_dict()
+        _write_json(Path(args.output), report)
+    except (EvaluationError, OSError, PF2BaselineError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(
+            {"output": args.output, "status": report["status"]},
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _pf2_export_bigquery(args: argparse.Namespace) -> int:
+    output_dir = Path(args.output_dir)
+    try:
+        if output_dir.exists():
+            raise EvaluationError(f"export directory already exists: {output_dir}")
+        model_rows = list(
+            _iter_json_objects(
+                Path(args.model),
+                kind="ATI-PF-2 model-table",
+                max_line_characters=args.max_line_characters,
+            )
+        )
+        report = _load_json_object(
+            Path(args.report),
+            kind="ATI-PF-2 baseline report",
+            max_characters=args.max_line_characters,
+        )
+        exported_at = args.exported_at or datetime.now(UTC).isoformat()
+        export = build_bigquery_export(
+            model_rows,
+            report,
+            run_id=args.run_id,
+            corpus_id=args.corpus_id,
+            exported_at=exported_at,
+            ati_version=__version__,
+        )
+        ddl = bigquery_ddl(args.dataset, project=args.project)
+        staging = Path(tempfile.mkdtemp(dir=output_dir.parent, prefix=f".{output_dir.name}."))
+        try:
+            for table, rows in export.tables.items():
+                with (staging / f"{table}.ndjson").open("w", encoding="utf-8") as stream:
+                    for row in rows:
+                        stream.write(_json_line(dict(row)))
+                with (staging / f"{table}.schema.json").open("w", encoding="utf-8") as stream:
+                    json.dump(list(export.schemas[table]), stream, indent=2)
+                    stream.write("\n")
+            (staging / "ddl.sql").write_text(ddl, encoding="utf-8")
+            with (staging / "export.json").open("w", encoding="utf-8") as stream:
+                json.dump(
+                    {
+                        "run_id": args.run_id,
+                        "corpus_id": args.corpus_id,
+                        "dataset": args.dataset,
+                        "project": args.project,
+                        "exported_at": exported_at,
+                        "ati_version": __version__,
+                        "row_counts": {
+                            table: len(rows) for table, rows in export.tables.items()
+                        },
+                    },
+                    stream,
+                    indent=2,
+                    sort_keys=True,
+                )
+                stream.write("\n")
+            staging.replace(output_dir)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+    except (EvaluationError, OSError, PF2BaselineError, PF2ExportError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(
+            {
+                "output_dir": str(output_dir),
+                "tables": sorted(export.tables),
+                "row_counts": {table: len(rows) for table, rows in export.tables.items()},
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
 
 
 def _load_json_object(path: Path, *, kind: str, max_characters: int) -> dict[str, object]:
@@ -1081,6 +1303,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _evaluate(args)
     if args.command == "pf2-preflight":
         return _pf2_preflight(args)
+    if args.command == "pf2-baseline":
+        return _pf2_baseline(args)
+    if args.command == "pf2-export-bigquery":
+        return _pf2_export_bigquery(args)
     if args.command == "evaluate-stratified":
         return _evaluate_stratified(args)
     if args.command == "campaign" and args.campaign_command == "labels":

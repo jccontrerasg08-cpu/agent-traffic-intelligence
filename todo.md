@@ -109,3 +109,20 @@
 - [x] Contrastar el contrato público del Worker y el origen Railway con solicitudes anónimas y sintéticas que no transporten secretos, credenciales ni eventos de campaña.
 - [x] Revisar los MCP disponibles y documentar cuáles aportan evidencia técnica y cuáles no son pertinentes para este perímetro.
 - [x] Registrar contradicciones, dependencias y próximos pasos mínimos, y publicar la evidencia mediante revisión protegida material en la PR #40.
+
+## Escalera de referencia ATI-PF-2 y almacén analítico — completada
+
+- [x] Implementar `ati pf2-baseline` con holdouts temporal encadenado, por tarea y por sesión agrupada, sin dependencias de ejecución nuevas.
+- [x] Derivar estandarización, coeficientes y umbral sólo dentro de la partición de entrenamiento y reportar intervalos por reagrupamiento de sesiones.
+- [x] Añadir ablación por familia de características permitida y estados que fallan en cerrado ante columnas prohibidas, solapamiento de sesiones o una clase ausente.
+- [x] Preparar la exportación agregada a BigQuery sin subir el corpus, rechazando el manifiesto de división y las filas por sesión.
+- [x] Ejecutar una campaña real de 24 sesiones y seis familias a través del Worker de Cloudflare desplegado y reconciliarla por identificadores opacos de solicitud.
+- [x] Registrar que el preflight rechazó el corpus real de una sola clase y que el control humano consentido sigue pendiente de una persona.
+- [x] Verificar 22 comprobaciones de perímetro en vivo y documentar los cuatro hallazgos que cambian el protocolo de recolección.
+
+## Control humano consentido ATI-PF-2 — pendiente de participante
+
+- [ ] Obtener el registro de consentimiento afirmativo antes de cualquier sesión humana.
+- [ ] Ejecutar la secuencia cerrada con el marcador `owned-domain-2026-08-25-pf2-human-consented` y una variante de ritmo declarada.
+- [ ] Reconciliar la cohorte humana y repetir `ati pf2-preflight` y `ati pf2-baseline` sobre un corpus de dos clases.
+- [ ] No etiquetar automatización dirigida por navegador como humana bajo ninguna circunstancia.

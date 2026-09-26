@@ -264,6 +264,26 @@ ati evaluate detections.jsonl --labels labels.jsonl --threshold 0.5
 
 The evaluator reports coverage, confusion-matrix metrics, and Brier score. It does not train or calibrate a model. See [`docs/evaluation.md`](docs/evaluation.md) for the JSONL contract, label provenance requirements, and leakage-safe benchmark design.
 
+### ATI-PF-2 controlled-session baseline
+
+For an authorized controlled-lab corpus, `ati pf2-preflight` builds a privacy-first
+session table behind the ATI-PF-2 feature firewall, `ati pf2-baseline` runs the
+constant-prevalence and regularized-logistic ladder over forward-chained temporal,
+leave-one-task-out and grouped-session holdouts, and `ati pf2-export-bigquery` prepares
+aggregate warehouse tables without uploading anything.
+
+```bash
+ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \
+  --target-false-positive-rate 0.05
+```
+
+Thresholds and standardization come from each split's training partition only, and
+uncertainty is reported by session-cluster resampling. A `ready-for-baseline` preflight
+or an `evaluated` baseline means the declared collection and holdout gates passed — not
+that the result generalizes, is calibrated, or defines an operating threshold. See
+[`docs/evaluation.md`](docs/evaluation.md) and the live-run record in
+[`docs/architecture/pf2-live-collection-evidence.md`](docs/architecture/pf2-live-collection-evidence.md).
+
 ### V1: verified identity
 
 - [x] ephemeral verification context preserving V0 privacy/output behavior

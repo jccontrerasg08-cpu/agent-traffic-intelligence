@@ -7,6 +7,9 @@ All notable changes will be documented here.
 ### Added
 
 - Observe-only V0 architecture, privacy-safe JSONL normalization, curated agent claims, bounded request/session features, four independent scores, and the original CLI.
+- ATI-PF-2 baseline ladder (`ati pf2-baseline`): forward-chained temporal, leave-one-task-out and grouped-session holdouts, a constant-prevalence baseline, a dependency-free L2-regularized logistic regression, train-partition-only standardization and threshold selection, session-cluster resampling intervals, and one refit ablation per permitted feature family.
+- Privacy-safe warehouse export (`ati pf2-export-bigquery`): aggregate run, metric, ablation, feature-summary and cohort tables with BigQuery schemas and DDL. The split manifest is not exportable and per-session feature rows are reduced to per-class aggregates.
+- Live ATI-PF-2 collection evidence recording a 24-session multi-family run through the deployed Cloudflare Worker, the reconciliation result, and the preflight's fail-closed refusal of the single-class corpus.
 - Ephemeral V1 `VerificationContext` so raw source addresses and signature material can be verified without entering persisted `RequestEvent` or detection output.
 - Versioned, explainable identity verification results with provider-, agent-, and key-scoped evidence plus explicit `claimed`, `verified`, `failed`, and `conflicted` resolution states.
 - Official IP-range verification and provider-documented FCrDNS support with privacy-safe evidence.
@@ -18,6 +21,7 @@ All notable changes will be documented here.
 
 ### Changed
 
+- `pr_auc` and `expected_calibration_error` are part of the evaluation module's public surface so the ATI-PF-2 baseline reuses one metric implementation.
 - Provider verification profiles were re-reviewed against current primary sources; Anthropic no longer carries an IP-range source because Anthropic does not publish crawler IP ranges.
 - Provider-style `prefixes-v1` documents normalize timezone-naive `creationTime` values to UTC, matching currently published OpenAI, Google, and Perplexity range documents; JAFAR remains strict about its required UTC `Z` form.
 - Provider-aware verification now skips agent-scoped range sources that cannot apply to the claimed agent.

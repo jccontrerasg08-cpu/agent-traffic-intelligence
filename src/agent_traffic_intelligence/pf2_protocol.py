@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise
+from types import MappingProxyType
 from typing import Any
 
 _SESSION_ID_PREFIX = "hmac-sha256:"
@@ -34,6 +35,51 @@ _DELAY_BIN_NAMES = (
     "delay_bin_4_to_16_count",
     "delay_bin_16_plus_count",
 )
+_ROUTE_COUNT_FEATURES = tuple(f"route_{category}_count" for category in _ROUTE_CATEGORIES)
+_TRANSITION_FEATURES = tuple(
+    f"transition_{previous}_to_{current}_count"
+    for previous in _ROUTE_CATEGORIES
+    for current in _ROUTE_CATEGORIES
+)
+
+PF2_TARGET_NAME = "automated"
+"""Name of the only permitted ATI-PF-2 model target column."""
+
+PF2_FEATURE_FAMILIES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "session_navigation": (
+            "session_request_count",
+            "duplicate_route_category_count",
+            "completion",
+            *_ROUTE_COUNT_FEATURES,
+        ),
+        "route_transition": _TRANSITION_FEATURES,
+        "http_method_status": (
+            "method_head_count",
+            "status_2xx_count",
+            "status_4xx_count",
+        ),
+        "coarsened_tempo": ("session_duration_bucket", *_DELAY_BIN_NAMES),
+    }
+)
+"""Permitted feature families from the controlled-corpus feature contract."""
+
+
+def pf2_feature_names() -> tuple[str, ...]:
+    """Return the fixed permitted ATI-PF-2 feature vocabulary in a stable order."""
+
+    return tuple(name for family in PF2_FEATURE_FAMILIES.values() for name in family)
+
+
+def is_pf2_session_id(value: object) -> bool:
+    """Report whether a value is an opaque ATI-PF-2 session pseudonym."""
+
+    return (
+        isinstance(value, str)
+        and value.startswith(_SESSION_ID_PREFIX)
+        and len(value) == len(_SESSION_ID_PREFIX) + _SESSION_ID_HEX_LENGTH
+        and all(character in "0123456789abcdef" for character in value[len(_SESSION_ID_PREFIX) :])
+    )
 
 
 class PF2ProtocolError(ValueError):
@@ -50,12 +96,7 @@ class PF2PreparedDataset:
 
 
 def _is_session_id(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and value.startswith(_SESSION_ID_PREFIX)
-        and len(value) == len(_SESSION_ID_PREFIX) + _SESSION_ID_HEX_LENGTH
-        and all(character in "0123456789abcdef" for character in value[len(_SESSION_ID_PREFIX) :])
-    )
+    return is_pf2_session_id(value)
 
 
 def _parse_record(record: Mapping[str, Any]) -> tuple[str, str, str, int, datetime]:
@@ -107,22 +148,8 @@ def _duration_bucket(duration_seconds: float) -> int:
 
 
 def _empty_feature_row() -> dict[str, int | bool]:
-    row: dict[str, int | bool] = {
-        "session_request_count": 0,
-        "session_duration_bucket": 0,
-        "method_head_count": 0,
-        "status_2xx_count": 0,
-        "status_4xx_count": 0,
-        "completion": False,
-        "duplicate_route_category_count": 0,
-    }
-    for category in _ROUTE_CATEGORIES:
-        row[f"route_{category}_count"] = 0
-    for previous in _ROUTE_CATEGORIES:
-        for current in _ROUTE_CATEGORIES:
-            row[f"transition_{previous}_to_{current}_count"] = 0
-    for name in _DELAY_BIN_NAMES:
-        row[name] = 0
+    row: dict[str, int | bool] = dict.fromkeys(pf2_feature_names(), 0)
+    row["completion"] = False
     return row
 
 
