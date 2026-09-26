@@ -195,6 +195,60 @@ reduced to per-class aggregates. The export fails closed if a row carries a colu
 is prohibited or absent from the declared schema, and the dataset and project names are
 validated before they reach any DDL.
 
+### Loading the export
+
+The export writes one `<table>.ndjson` and one `<table>.schema.json` per table, plus
+`ddl.sql` and an `export.json` index. Loading is a deliberate, separate operator step;
+nothing is uploaded until you run it.
+
+```bash
+# 1. Create the dataset once, in a project where BigQuery is enabled.
+bq --location=US mk --dataset "${PROJECT}:ati_pf2"
+
+# 2. Create the tables from the generated DDL.
+bq query --use_legacy_sql=false --project_id="${PROJECT}" < export/ddl.sql
+
+# 3. Load each table from its newline-delimited JSON and declared schema.
+for table in pf2_run_manifest pf2_baseline_metrics pf2_baseline_ablations \
+             pf2_feature_summary pf2_cohort_counts; do
+  bq load --source_format=NEWLINE_DELIMITED_JSON \
+    "${PROJECT}:ati_pf2.${table}" \
+    "export/${table}.ndjson" \
+    "export/${table}.schema.json"
+done
+```
+
+Re-run `ati pf2-export-bigquery` with a new `--run-id` per run; the tables append, so
+`pf2_run_manifest` becomes the run index and the metric, ablation, feature and cohort
+tables can be compared across runs by `run_id`. Useful once more than one run exists:
+
+```sql
+-- Did the regularized model beat the constant baseline on each final temporal holdout?
+SELECT run_id, corpus_id, final_temporal_holdout,
+       logistic_beats_constant_on_final_temporal_holdout AS beat_baseline,
+       target_false_positive_rate, meets_predeclared_false_positive_rate
+FROM `PROJECT.ati_pf2.pf2_run_manifest`
+ORDER BY exported_at DESC;
+
+-- Which permitted feature family carries the signal on the final temporal holdout?
+SELECT a.run_id, a.removed_feature_family, a.pr_auc_delta
+FROM `PROJECT.ati_pf2.pf2_baseline_ablations` AS a
+JOIN `PROJECT.ati_pf2.pf2_baseline_metrics` AS m
+  ON m.run_id = a.run_id AND m.split_name = a.split_name
+WHERE m.final_temporal_holdout AND m.model = 'l2_logistic_regression'
+ORDER BY a.run_id DESC, a.pr_auc_delta;
+
+-- Corpus-composition drift between runs, by feature and class.
+SELECT feature_name, target_class, run_id, mean, distinct_value_count
+FROM `PROJECT.ati_pf2.pf2_feature_summary`
+WHERE feature_family = 'coarsened_tempo'
+ORDER BY feature_name, target_class, run_id;
+```
+
+Treat a single run's row in `pf2_run_manifest` as one observation, not a trend: the
+`beat_baseline` column reports whether the declared holdout comparison held for that
+corpus, not that a detector is ready for traffic.
+
 ## Corpus handling
 
 Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
