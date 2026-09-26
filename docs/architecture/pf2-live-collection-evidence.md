@@ -111,6 +111,33 @@ automated collection substitutes for it.
    realistic intra-session delay bins; a flat inter-request delay would have collapsed
    the coarse tempo features instead.
 
+## The blocker was not only a person
+
+Re-reading the consent procedure against the implementation found a second, harder blocker
+that a human participant alone would not have solved. The procedure's route plan predated
+ATI-PF-2: it ended at `/lab/missing` and never reached `/lab/complete`.
+
+`/lab/missing` is not in `_APPROVED_ROUTES`, so `prepare_pf2_dataset` rejects any session
+containing it with *record path must be an eligible ATI-PF-2 route* — confirmed by running
+the documented sequence through the preflight, not inferred from reading. Even with that
+route removed, every automated family terminates at `/lab/complete` while that plan never
+did, so `completion` and the route-category counts would have separated the cohorts
+perfectly: a route category present in only one target class, which the feature contract
+forbids outright.
+
+So a human cohort collected exactly as documented would have produced either a rejected
+corpus or a model that learned the executor rather than the behavior. The lab repository's
+procedure now follows the shared task graph, the approved local executor it assumed exists
+as `scripts/lab_session.py`, and `scripts/build_pf2_corpus.py` reconciles session records
+against an export. The chain from reconciliation through preflight, baseline and warehouse
+export was then verified end to end on a clearly-labeled two-class fixture.
+
+That fixture is separable by construction, so its perfect PR-AUC and its zero ablation
+deltas say nothing about detection quality — every permitted family alone suffices there.
+Its useful signals are the ones that are not perfect: the train-selected threshold
+transferred on the temporal holdout but collapsed recall to zero on both task holdouts,
+which is the honest reading of a threshold that does not generalize across tasks.
+
 ## Not established by this run
 
 - No generalization to unmarked public traffic.

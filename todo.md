@@ -120,6 +120,15 @@
 - [x] Registrar que el preflight rechazó el corpus real de una sola clase y que el control humano consentido sigue pendiente de una persona.
 - [x] Verificar 22 comprobaciones de perímetro en vivo y documentar los cuatro hallazgos que cambian el protocolo de recolección.
 
+## Correcciones para que la recolección funcione como se pretende — completadas
+
+- [x] Corregir el bucket de procedencia del Worker: la `fetch` global de Node envía `node` a secas y quedaba como `other`, subestimando el tráfico scripted en el reporte de composición.
+- [x] Usar coincidencia por límite de token para no reclasificar una UA de navegador que contenga una palabra más larga.
+- [x] Detectar y corregir que el plan de rutas del procedimiento de consentimiento es anterior a PF-2: terminaba en `/lab/missing`, ruta que el preflight rechaza, y nunca llegaba a `/lab/complete`, lo que habría hecho de la finalización un proxy perfecto de la clase.
+- [x] Añadir el ejecutor local aprobado que el procedimiento ya asumía pero no existía, con chequeo de alcanzabilidad, lectura de cabeceras insensible a mayúsculas y sólo campos de auditoría aprobados.
+- [x] Añadir el reconciliador que une registros locales con filas exportadas por identificador opaco y excluye sesiones en lugar de repararlas.
+- [x] Verificar la cadena completa —reconciliar, preflight, baseline, exportación— de extremo a extremo sobre un fixture de dos clases claramente identificado como tal.
+
 ## Control humano consentido ATI-PF-2 — pendiente de participante
 
 - [ ] Obtener el registro de consentimiento afirmativo antes de cualquier sesión humana.
