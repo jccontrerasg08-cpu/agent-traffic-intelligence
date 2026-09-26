@@ -128,8 +128,14 @@ forbids outright.
 So a human cohort collected exactly as documented would have produced either a rejected
 corpus or a model that learned the executor rather than the behavior. The lab repository's
 procedure now follows the shared task graph, the approved local executor it assumed exists
-as `scripts/lab_session.py`, and `scripts/build_pf2_corpus.py` reconciles session records
-against an export. The chain from reconciliation through preflight, baseline and warehouse
+as `ati-lab-session`, and `ati-lab-corpus` reconciles session records against an export.
+
+A second confound was then found in that executor's first version: it derived the label
+from the pacing variant, so the pacing regime alone would have separated the classes. The
+laboratory now runs both cohorts through the same executor with cohort and pacing as
+independent inputs — the matched-executor design — and `ati-lab-corpus` refuses any corpus
+in which a pacing variant, executor, scenario version or catalogue version occurs in one
+class only. Those dimensions never reach ATI, so the preflight could not have caught it. The chain from reconciliation through preflight, baseline and warehouse
 export was then verified end to end on a clearly-labeled two-class fixture.
 
 That fixture is separable by construction, so its perfect PR-AUC and its zero ablation
@@ -137,6 +143,30 @@ deltas say nothing about detection quality — every permitted family alone suff
 Its useful signals are the ones that are not perfect: the train-selected threshold
 transferred on the temporal holdout but collapsed recall to zero on both task holdouts,
 which is the honest reading of a threshold that does not generalize across tasks.
+
+## What the matched-executor design changes
+
+Two fixtures, same pipeline, show why the design matters more than the model. Both are
+synthetic and labeled as such; neither is collected traffic.
+
+| Fixture | Varying features | Final temporal holdout PR-AUC | `logistic_beats_constant` | Ablation |
+|---|---:|---:|---|---|
+| Unmatched: humans fetch assets and revisit, automation does not | 23 of 67 | 1.000 | `true` | Every family Δ 0.000 — each alone separated the classes |
+| Matched: one executor, one plan, shared H regimes; only timing differs | 9 of 67 | 0.647 (interval 0.378–0.869) | `false` | `coarsened_tempo` Δ −0.147; every other family Δ 0.000 |
+
+The unmatched result looks perfect because everything in it is a class proxy: route plan,
+asset requests and revisits all differ by cohort, so any family alone suffices and the
+ablation cannot attribute anything. The matched result removes those proxies. Only the
+tempo family still varies, the ablation attributes the whole signal to it, and the
+session-cluster lower bound falls below the constant baseline, so the ladder correctly
+declines to claim a win on 48 sessions. That is the honest shape of the question: whether
+timing alone separates people from paced automation is not established at this size.
+
+A third run shows the confound check is load-bearing. With automated sessions restricted
+to `burst`, `ati-lab-corpus` refuses the corpus and writes nothing. Forced through with
+`--diagnostic`, `ati pf2-preflight` accepts it — pacing never reaches ATI — and the
+baseline reports PR-AUC 1.000 and `logistic_beats_constant: true` on the final temporal
+holdout, a result manufactured entirely by the pacing regime.
 
 ## Not established by this run
 

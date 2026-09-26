@@ -29,7 +29,7 @@ def _record(
 
 
 def test_pf2_preflight_materializes_fixed_width_features_without_audit_identifiers() -> None:
-    from agent_traffic_intelligence.pf2_protocol import prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
 
     automated = _session("a")
     human = _session("b")
@@ -74,7 +74,10 @@ def test_pf2_preflight_materializes_fixed_width_features_without_audit_identifie
 
 
 def test_pf2_preflight_rejects_task_without_both_classes() -> None:
-    from agent_traffic_intelligence.pf2_protocol import PF2ProtocolError, prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import (
+        PF2ProtocolError,
+        prepare_pf2_dataset,
+    )
 
     automated = _session("c")
     records = [
@@ -93,7 +96,10 @@ def test_pf2_preflight_rejects_task_without_both_classes() -> None:
 
 
 def test_pf2_preflight_rejects_unknown_route_and_does_not_treat_it_as_feature() -> None:
-    from agent_traffic_intelligence.pf2_protocol import PF2ProtocolError, prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import (
+        PF2ProtocolError,
+        prepare_pf2_dataset,
+    )
 
     automated = _session("d")
     human = _session("e")
@@ -191,7 +197,10 @@ def test_pf2_preflight_cli_writes_model_and_split_artifacts_separately(
 
 
 def test_pf2_preflight_rejects_integrity_only_missing_route() -> None:
-    from agent_traffic_intelligence.pf2_protocol import PF2ProtocolError, prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import (
+        PF2ProtocolError,
+        prepare_pf2_dataset,
+    )
 
     automated = _session("1")
     human = _session("2")
@@ -212,7 +221,7 @@ def test_pf2_preflight_rejects_integrity_only_missing_route() -> None:
 
 
 def test_pf2_preflight_blocks_baseline_without_a_task_holdout() -> None:
-    from agent_traffic_intelligence.pf2_protocol import prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
 
     automated = _session("3")
     human = _session("4")
@@ -236,7 +245,7 @@ def test_pf2_preflight_blocks_baseline_without_a_task_holdout() -> None:
 
 
 def test_pf2_preflight_blocks_baseline_without_temporal_holdout() -> None:
-    from agent_traffic_intelligence.pf2_protocol import prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
 
     automated_a = _session("5")
     human_a = _session("6")

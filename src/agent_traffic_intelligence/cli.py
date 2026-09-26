@@ -16,16 +16,29 @@ from pathlib import Path
 from typing import TextIO
 
 from agent_traffic_intelligence import __version__
-from agent_traffic_intelligence.campaign_protocol import (
-    build_navigation_campaign_plan,
-    validate_campaign_runtime,
-)
 from agent_traffic_intelligence.engine import Detector
 from agent_traffic_intelligence.evaluation import (
     EvaluationError,
     evaluate_automation_scores,
     evaluate_stratified_automation_scores,
     validate_corpus_manifest,
+)
+from agent_traffic_intelligence.evaluation.campaign import (
+    build_navigation_campaign_plan,
+    validate_campaign_runtime,
+)
+from agent_traffic_intelligence.evaluation.pf2.baseline import (
+    PF2BaselineError,
+    evaluate_pf2_baseline,
+)
+from agent_traffic_intelligence.evaluation.pf2.export import (
+    PF2ExportError,
+    bigquery_ddl,
+    build_bigquery_export,
+)
+from agent_traffic_intelligence.evaluation.pf2.protocol import (
+    PF2ProtocolError,
+    prepare_pf2_dataset,
 )
 from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
@@ -52,19 +65,6 @@ from agent_traffic_intelligence.parsers.jsonl import (
     ParseError,
     iter_jsonl,
     iter_jsonl_with_context,
-)
-from agent_traffic_intelligence.pf2_baseline import (
-    PF2BaselineError,
-    evaluate_pf2_baseline,
-)
-from agent_traffic_intelligence.pf2_export import (
-    PF2ExportError,
-    bigquery_ddl,
-    build_bigquery_export,
-)
-from agent_traffic_intelligence.pf2_protocol import (
-    PF2ProtocolError,
-    prepare_pf2_dataset,
 )
 from agent_traffic_intelligence.registry import AgentRegistry
 

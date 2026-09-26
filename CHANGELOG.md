@@ -21,6 +21,8 @@ All notable changes will be documented here.
 
 ### Changed
 
+- `evaluation` is a package: metrics in `evaluation.metrics`, campaign planning in `evaluation.campaign`, and the ATI-PF-2 protocol, baseline and export in `evaluation.pf2`. The public `evaluation` surface is unchanged, and `campaign_protocol` and `pf2_protocol` remain as compatibility facades. Evaluation tests moved from `tests/research` to `tests/evaluation`, so `make test-evaluation` now covers the whole area and `make test-research` covers research contracts only.
+- The ATI-PF-2 route mapping is public as `PF2_ROUTE_CATEGORIES`, versioned as `PF2_CATALOGUE_VERSION`, and pinned by test to the laboratory's closed catalogue.
 - `pr_auc` and `expected_calibration_error` are part of the evaluation module's public surface so the ATI-PF-2 baseline reuses one metric implementation.
 - Provider verification profiles were re-reviewed against current primary sources; Anthropic no longer carries an IP-range source because Anthropic does not publish crawler IP ranges.
 - Provider-style `prefixes-v1` documents normalize timezone-naive `creationTime` values to UTC, matching currently published OpenAI, Google, and Perplexity range documents; JAFAR remains strict about its required UTC `Z` form.

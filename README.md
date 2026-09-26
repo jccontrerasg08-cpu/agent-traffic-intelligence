@@ -54,7 +54,7 @@ The deterministic core has **zero third-party Python runtime dependencies**. Cry
 
 ## Modular architecture and reproducible environments
 
-ATI remains one Python distribution, but its boundaries are now explicit: `ingestion` normalizes authorized JSONL; `detection` composes evidence and scores; `identity` verifies independent claims; `evaluation` measures labeled artifacts; `runtime` owns the no-UI technical adapter; and `research` contains **contracts only** for proposed directions that are not active detectors. Compatibility facades retain the existing `engine`, `parsers`, and `service` import paths.
+ATI remains one Python distribution, but its boundaries are now explicit: `ingestion` normalizes authorized JSONL; `detection` composes evidence and scores; `identity` verifies independent claims; `evaluation` measures labeled artifacts, with `evaluation.campaign` for controlled-campaign planning and `evaluation.pf2` for the ATI-PF-2 session protocol, baseline ladder and warehouse export; `runtime` owns the no-UI technical adapter; and `research` contains **contracts only** for proposed directions that are not active detectors. Compatibility facades retain the existing `engine`, `parsers`, `service`, `campaign_protocol` and `pf2_protocol` import paths.
 
 Use the versioned profiles instead of improvising test environments:
 
@@ -62,8 +62,9 @@ Use the versioned profiles instead of improvising test environments:
 make test-core          # parser, models, features, rules, scoring
 make test-identity      # offline fixtures and verification behavior
 make test-service       # no-UI HTTP contract
-make test-controlled    # authorized campaign and evaluation contracts
-make test-research      # research gates, not experimental detection
+make test-evaluation    # metrics, campaigns, ATI-PF-2 protocol, baseline and export
+make test-controlled    # CLI flows plus evaluation and the local lab target
+make test-research      # research contracts only, not experimental detection
 make smoke-service      # installed-wheel service process on loopback
 ```
 

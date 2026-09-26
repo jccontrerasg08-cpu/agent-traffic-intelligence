@@ -129,9 +129,19 @@
 - [x] Añadir el reconciliador que une registros locales con filas exportadas por identificador opaco y excluye sesiones en lugar de repararlas.
 - [x] Verificar la cadena completa —reconciliar, preflight, baseline, exportación— de extremo a extremo sobre un fixture de dos clases claramente identificado como tal.
 
+## Reestructuración para el diseño emparejado — completada
+
+- [x] Convertir `evaluation` en paquete (`metrics`, `campaign`, `pf2`) con fachadas para `campaign_protocol` y `pf2_protocol`, sin cambiar la superficie pública.
+- [x] Mover las pruebas de evaluación a `tests/evaluation`, de modo que cada perfil de `make` pruebe exactamente su área.
+- [x] Registrar `evaluation.campaign` y `evaluation.pf2` en el mapa de límites modulares, como exige la regla de activación.
+- [x] Fijar el mapeo de rutas ATI-PF-2 al catálogo versionado del laboratorio en ambos repositorios.
+- [x] Verificar con fixtures que el diseño emparejado elimina los proxies de clase y que la comprobación de confusión impide un resultado fabricado.
+- [x] Confirmar 22/22 comprobaciones de perímetro en vivo con el comando mantenido `ati-lab-perimeter`.
+
 ## Control humano consentido ATI-PF-2 — pendiente de participante
 
 - [ ] Obtener el registro de consentimiento afirmativo antes de cualquier sesión humana.
-- [ ] Ejecutar la secuencia cerrada con el marcador `owned-domain-2026-08-25-pf2-human-consented` y una variante de ritmo declarada.
+- [ ] Desplegar el Worker para activar los marcadores del diseño emparejado y la corrección del bucket de procedencia.
+- [ ] Ejecutar ambas cohortes con `ati-lab-session` (marcadores `owned-domain-2026-09-26-pf2-matched-*`), compartiendo tareas, ventanas y regímenes H1–H3.
 - [ ] Reconciliar la cohorte humana y repetir `ati pf2-preflight` y `ati pf2-baseline` sobre un corpus de dos clases.
 - [ ] No etiquetar automatización dirigida por navegador como humana bajo ninguna circunstancia.

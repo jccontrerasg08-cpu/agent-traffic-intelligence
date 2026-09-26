@@ -4,14 +4,14 @@ import json
 
 import pytest
 
-from agent_traffic_intelligence.pf2_baseline import evaluate_pf2_baseline
-from agent_traffic_intelligence.pf2_export import (
+from agent_traffic_intelligence.evaluation.pf2.baseline import evaluate_pf2_baseline
+from agent_traffic_intelligence.evaluation.pf2.export import (
     SCHEMAS,
     PF2ExportError,
     bigquery_ddl,
     build_bigquery_export,
 )
-from agent_traffic_intelligence.pf2_protocol import (
+from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2_FEATURE_FAMILIES,
     PF2_TARGET_NAME,
     pf2_feature_names,

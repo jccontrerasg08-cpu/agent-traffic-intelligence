@@ -7,12 +7,12 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from agent_traffic_intelligence.pf2_baseline import (
+from agent_traffic_intelligence.evaluation.pf2.baseline import (
     PF2BaselineError,
     build_pf2_splits,
     evaluate_pf2_baseline,
 )
-from agent_traffic_intelligence.pf2_protocol import (
+from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2_FEATURE_FAMILIES,
     PF2_TARGET_NAME,
     pf2_feature_names,
@@ -504,7 +504,7 @@ def test_invalid_baseline_options_fail_closed(kwargs: dict[str, float], message:
 def test_preflight_output_feeds_the_baseline_directly() -> None:
     from datetime import UTC, datetime, timedelta
 
-    from agent_traffic_intelligence.pf2_protocol import prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
 
     records = []
     labels: dict[str, bool] = {}

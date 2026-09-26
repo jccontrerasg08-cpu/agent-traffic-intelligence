@@ -25,8 +25,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from agent_traffic_intelligence.evaluation import expected_calibration_error, pr_auc
-from agent_traffic_intelligence.pf2_protocol import (
+from agent_traffic_intelligence.evaluation.metrics import expected_calibration_error, pr_auc
+from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2_FEATURE_FAMILIES,
     PF2_TARGET_NAME,
     is_pf2_session_id,

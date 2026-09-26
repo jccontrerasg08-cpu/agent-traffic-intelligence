@@ -10,7 +10,7 @@ Los perfiles están diseñados para ejecutar variaciones con datos propios o fix
 | Identidad offline | `make test-identity` | Perfiles, caché, DNS simulado, rangos y firmas almacenadas. | Fixtures locales; no DNS real ni refresh. | Verificación neutral ante fallos operativos. |
 | Servicio | `make test-service` | Salud, autenticación, Content-Type, límites y privacidad del adaptador HTTP. | Loopback local; sin UI ni persistencia. | 200 de salud, 401 sin token y rechazo de entradas inválidas. |
 | Corpus controlado | `make test-controlled` | Marcadores de campaña, manifiestos, etiquetas, `ati run` y readiness. | Fixture autorizado; no tráfico externo. | Artefacto privacy-safe y `review-required` cuando falta cobertura. |
-| Evaluación | `make test-evaluation` | Métricas, cobertura, clases ausentes y calibración. | Detecciones/etiquetas locales. | Métricas explícitas y nulos cuando una métrica no está definida. |
+| Evaluación | `make test-evaluation` | Métricas, cobertura, clases ausentes y calibración; planificación de campañas; protocolo, escalera de referencia y exportación ATI-PF-2; paridad con el catálogo del laboratorio y fachadas. | Detecciones/etiquetas locales y fixtures sintéticos rotulados. | Métricas explícitas y nulos cuando una métrica no está definida; fallo cerrado ante columnas prohibidas o solapamiento de sesiones. |
 | Regresión completa | `make test-all` | Toda la suite. | Local y determinista. | Todas las pruebas correctas. |
 | Calidad | `make check` | Lint, tipos y regresión. | Local. | Ruff y mypy correctos, además de suite completa. |
 | Paquete | `make package` | Construcción wheel/sdist y clean-install. | Build local; no red durante análisis. | Artefacto instalable y ejecutable. |

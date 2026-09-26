@@ -17,11 +17,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from agent_traffic_intelligence.pf2_baseline import (
+from agent_traffic_intelligence.evaluation.pf2.baseline import (
     PF2BaselineError,
     assert_pf2_model_table,
 )
-from agent_traffic_intelligence.pf2_protocol import PF2_FEATURE_FAMILIES, PF2_TARGET_NAME
+from agent_traffic_intelligence.evaluation.pf2.protocol import PF2_FEATURE_FAMILIES, PF2_TARGET_NAME
 
 _PROHIBITED_EXPORT_KEYS = frozenset(
     {
