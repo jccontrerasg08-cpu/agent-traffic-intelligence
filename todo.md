@@ -109,3 +109,39 @@
 - [x] Contrastar el contrato público del Worker y el origen Railway con solicitudes anónimas y sintéticas que no transporten secretos, credenciales ni eventos de campaña.
 - [x] Revisar los MCP disponibles y documentar cuáles aportan evidencia técnica y cuáles no son pertinentes para este perímetro.
 - [x] Registrar contradicciones, dependencias y próximos pasos mínimos, y publicar la evidencia mediante revisión protegida material en la PR #40.
+
+## Escalera de referencia ATI-PF-2 y almacén analítico — completada
+
+- [x] Implementar `ati pf2-baseline` con holdouts temporal encadenado, por tarea y por sesión agrupada, sin dependencias de ejecución nuevas.
+- [x] Derivar estandarización, coeficientes y umbral sólo dentro de la partición de entrenamiento y reportar intervalos por reagrupamiento de sesiones.
+- [x] Añadir ablación por familia de características permitida y estados que fallan en cerrado ante columnas prohibidas, solapamiento de sesiones o una clase ausente.
+- [x] Preparar la exportación agregada a BigQuery sin subir el corpus, rechazando el manifiesto de división y las filas por sesión.
+- [x] Ejecutar una campaña real de 24 sesiones y seis familias a través del Worker de Cloudflare desplegado y reconciliarla por identificadores opacos de solicitud.
+- [x] Registrar que el preflight rechazó el corpus real de una sola clase y que el control humano consentido sigue pendiente de una persona.
+- [x] Verificar 22 comprobaciones de perímetro en vivo y documentar los cuatro hallazgos que cambian el protocolo de recolección.
+
+## Correcciones para que la recolección funcione como se pretende — completadas
+
+- [x] Corregir el bucket de procedencia del Worker: la `fetch` global de Node envía `node` a secas y quedaba como `other`, subestimando el tráfico scripted en el reporte de composición.
+- [x] Usar coincidencia por límite de token para no reclasificar una UA de navegador que contenga una palabra más larga.
+- [x] Detectar y corregir que el plan de rutas del procedimiento de consentimiento es anterior a PF-2: terminaba en `/lab/missing`, ruta que el preflight rechaza, y nunca llegaba a `/lab/complete`, lo que habría hecho de la finalización un proxy perfecto de la clase.
+- [x] Añadir el ejecutor local aprobado que el procedimiento ya asumía pero no existía, con chequeo de alcanzabilidad, lectura de cabeceras insensible a mayúsculas y sólo campos de auditoría aprobados.
+- [x] Añadir el reconciliador que une registros locales con filas exportadas por identificador opaco y excluye sesiones en lugar de repararlas.
+- [x] Verificar la cadena completa —reconciliar, preflight, baseline, exportación— de extremo a extremo sobre un fixture de dos clases claramente identificado como tal.
+
+## Reestructuración para el diseño emparejado — completada
+
+- [x] Convertir `evaluation` en paquete (`metrics`, `campaign`, `pf2`) con fachadas para `campaign_protocol` y `pf2_protocol`, sin cambiar la superficie pública.
+- [x] Mover las pruebas de evaluación a `tests/evaluation`, de modo que cada perfil de `make` pruebe exactamente su área.
+- [x] Registrar `evaluation.campaign` y `evaluation.pf2` en el mapa de límites modulares, como exige la regla de activación.
+- [x] Fijar el mapeo de rutas ATI-PF-2 al catálogo versionado del laboratorio en ambos repositorios.
+- [x] Verificar con fixtures que el diseño emparejado elimina los proxies de clase y que la comprobación de confusión impide un resultado fabricado.
+- [x] Confirmar 22/22 comprobaciones de perímetro en vivo con el comando mantenido `ati-lab-perimeter`.
+
+## Control humano consentido ATI-PF-2 — pendiente de participante
+
+- [ ] Obtener el registro de consentimiento afirmativo antes de cualquier sesión humana.
+- [ ] Desplegar el Worker para activar los marcadores del diseño emparejado y la corrección del bucket de procedencia.
+- [ ] Ejecutar ambas cohortes con `ati-lab-session` (marcadores `owned-domain-2026-09-26-pf2-matched-*`), compartiendo tareas, ventanas y regímenes H1–H3.
+- [ ] Reconciliar la cohorte humana y repetir `ati pf2-preflight` y `ati pf2-baseline` sobre un corpus de dos clases.
+- [ ] No etiquetar automatización dirigida por navegador como humana bajo ninguna circunstancia.
