@@ -10,7 +10,7 @@ from agent_traffic_intelligence import cli
 
 def _protocol_module():
     try:
-        return importlib.import_module("agent_traffic_intelligence.campaign_protocol")
+        return importlib.import_module("agent_traffic_intelligence.evaluation.campaign")
     except ModuleNotFoundError:
         pytest.fail("campaign protocol module is not implemented")
 

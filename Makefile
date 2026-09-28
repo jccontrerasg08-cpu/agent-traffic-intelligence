@@ -24,12 +24,12 @@ test-research:
 	PYTHONPATH=src pytest -q tests/research
 
 test-controlled:
-	PYTHONPATH=src:. pytest -q tests/test_cli.py tests/test_evaluation.py tests/lab
+	PYTHONPATH=src:. pytest -q tests/test_cli.py tests/evaluation tests/lab
 	ruff check lab tests/lab
 	mypy lab
 
 test-evaluation:
-	PYTHONPATH=src pytest -q tests/test_evaluation.py
+	PYTHONPATH=src pytest -q tests/evaluation
 
 profile-matrix: test-core test-identity test-service test-public test-research test-controlled test-evaluation smoke-service
 

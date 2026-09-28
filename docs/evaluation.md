@@ -105,6 +105,150 @@ ati pf2-preflight access.jsonl \
 
 The command rejects unapproved or integrity-only routes, non-GET/HEAD records, invalid statuses, missing targets, absent labeled sessions and task×class cells below the configured floor. Exact timestamps are used in memory only to form four fixed delay bins and one duration bucket; no timestamp or opaque identifier is emitted to the model table. Collection windows are local audit/split labels, never model columns. It reports `blocked-no-feature-variation` if all allowed features are constant, `blocked-no-task-holdout` if there are fewer than two shared tasks, and `blocked-no-temporal-holdout` if fewer than two declared collection windows are available. `ready-for-baseline` means only that those **collection gates** passed; it does not establish generalization, calibration, a population FPR or an operating threshold.
 
+## ATI-PF-2 baseline ladder
+
+`ati pf2-baseline` consumes the two artifacts the preflight wrote and runs the baseline
+ladder from the controlled-corpus feature contract: first a non-model constant-prevalence
+classifier, then one L2-regularized logistic regression over the permitted feature
+families only. It adds no runtime dependency; the estimator is a damped Newton solve in
+the standard library.
+
+```bash
+ati pf2-baseline model.jsonl \
+  --split-manifest splits.jsonl \
+  --output baseline.json \
+  --target-false-positive-rate 0.05 \
+  --resamples 1000 \
+  --seed 0
+```
+
+The split manifest is used **only** to build partitions. Its columns never reach an
+estimator, a scaler, a threshold search or an ablation, and the report never emits an
+opaque session pseudonym.
+
+### Holdouts
+
+| Split kind | Construction |
+|---|---|
+| `temporal` | Forward-chained by declared collection window: window *i* trains only on windows *0…i−1*, so the earliest window is never a holdout and the last is the **final temporal holdout**. |
+| `unseen_task` | Leave-one-audit-task-out. |
+| `grouped_session` | Deterministic seeded partition of opaque sessions. |
+
+Because the ATI-PF-2 model table holds exactly one row per opaque session, a grouped
+session split is a row split by construction, and resampling rows is session-cluster
+resampling. Every split is checked for train/holdout session overlap and fails closed.
+
+### Operating point and uncertainty
+
+Standardization statistics, coefficients and the operating threshold are all derived
+inside each split's training partition. With `--target-false-positive-rate` the threshold
+is the lowest train-partition threshold whose **train** false-positive rate meets the
+target; it is never selected after looking at the holdout. Each metric carries a
+percentile interval from session-cluster resampling, and
+`logistic_beats_constant` requires both a point-estimate win on PR-AUC and a resampled
+lower bound above the constant baseline's point estimate.
+
+`--target-false-positive-rate` makes `meets_predeclared_false_positive_rate` meaningful:
+a `false` there is the expected, honest signal that a train-selected threshold did not
+transfer, not a reason to retune against the holdout.
+
+### Ablations and fail-closed statuses
+
+One refit per permitted feature family reports that family's PR-AUC delta. The run fails
+closed with an error on a prohibited model column, a missing or non-boolean target, a
+duplicate `row_index`, a duplicate or non-opaque session pseudonym, an unsupported split
+field, or a split-manifest row count that does not match the model table. A split whose
+train or holdout side lacks a class is recorded as `blocked-single-class` with **no**
+metrics, and the overall status becomes `blocked-single-class-split`.
+
+`evaluated` means the declared holdouts were computed. It does not establish
+generalization to public traffic, a population false-positive rate, calibrated
+probabilities or an enforcement threshold.
+
+## Warehousing a baseline run
+
+`ati pf2-export-bigquery` prepares local, aggregate, firewall-checked warehouse tables
+plus their BigQuery schemas and `CREATE TABLE` DDL. **ATI never uploads a corpus**: the
+operator loads the artifacts deliberately.
+
+```bash
+ati pf2-export-bigquery model.jsonl \
+  --report baseline.json \
+  --output-dir export/ \
+  --run-id 'controlled-pf2-2026-09-26' \
+  --corpus-id 'controlled-pf2-2026-09' \
+  --dataset ati_pf2
+```
+
+| Table | Grain |
+|---|---|
+| `pf2_run_manifest` | One row per run: status, counts, prevalence, firewall assertions, verdict. |
+| `pf2_baseline_metrics` | One row per split × model, including session-cluster interval bounds. |
+| `pf2_baseline_ablations` | One row per split × removed feature family. |
+| `pf2_feature_summary` | One row per feature × class: count, distinct values, min, max, mean. |
+| `pf2_cohort_counts` | One row per task or collection window × class. |
+
+The split manifest is **not exportable** and the exporter refuses it. Per-session feature
+rows are not exported either: a rare feature vector can single out a session, which the
+feature contract treats as a high-resolution indirect identifier, so the feature table is
+reduced to per-class aggregates. The export fails closed if a row carries a column that
+is prohibited or absent from the declared schema, and the dataset and project names are
+validated before they reach any DDL.
+
+### Loading the export
+
+The export writes one `<table>.ndjson` and one `<table>.schema.json` per table, plus
+`ddl.sql` and an `export.json` index. Loading is a deliberate, separate operator step;
+nothing is uploaded until you run it.
+
+```bash
+# 1. Create the dataset once, in a project where BigQuery is enabled.
+bq --location=US mk --dataset "${PROJECT}:ati_pf2"
+
+# 2. Create the tables from the generated DDL.
+bq query --use_legacy_sql=false --project_id="${PROJECT}" < export/ddl.sql
+
+# 3. Load each table from its newline-delimited JSON and declared schema.
+for table in pf2_run_manifest pf2_baseline_metrics pf2_baseline_ablations \
+             pf2_feature_summary pf2_cohort_counts; do
+  bq load --source_format=NEWLINE_DELIMITED_JSON \
+    "${PROJECT}:ati_pf2.${table}" \
+    "export/${table}.ndjson" \
+    "export/${table}.schema.json"
+done
+```
+
+Re-run `ati pf2-export-bigquery` with a new `--run-id` per run; the tables append, so
+`pf2_run_manifest` becomes the run index and the metric, ablation, feature and cohort
+tables can be compared across runs by `run_id`. Useful once more than one run exists:
+
+```sql
+-- Did the regularized model beat the constant baseline on each final temporal holdout?
+SELECT run_id, corpus_id, final_temporal_holdout,
+       logistic_beats_constant_on_final_temporal_holdout AS beat_baseline,
+       target_false_positive_rate, meets_predeclared_false_positive_rate
+FROM `PROJECT.ati_pf2.pf2_run_manifest`
+ORDER BY exported_at DESC;
+
+-- Which permitted feature family carries the signal on the final temporal holdout?
+SELECT a.run_id, a.removed_feature_family, a.pr_auc_delta
+FROM `PROJECT.ati_pf2.pf2_baseline_ablations` AS a
+JOIN `PROJECT.ati_pf2.pf2_baseline_metrics` AS m
+  ON m.run_id = a.run_id AND m.split_name = a.split_name
+WHERE m.final_temporal_holdout AND m.model = 'l2_logistic_regression'
+ORDER BY a.run_id DESC, a.pr_auc_delta;
+
+-- Corpus-composition drift between runs, by feature and class.
+SELECT feature_name, target_class, run_id, mean, distinct_value_count
+FROM `PROJECT.ati_pf2.pf2_feature_summary`
+WHERE feature_family = 'coarsened_tempo'
+ORDER BY feature_name, target_class, run_id;
+```
+
+Treat a single run's row in `pf2_run_manifest` as one observation, not a trend: the
+`beat_baseline` column reports whether the declared holdout comparison held for that
+corpus, not that a detector is ready for traffic.
+
 ## Corpus handling
 
 Do not commit production logs, raw IP addresses, cookies, Authorization headers, request bodies, or third-party datasets whose license is incompatible with this Apache-2.0 repository. Keep corpora outside version control and record their provenance, authorization, collection window, label source, and known sampling bias in a separate local manifest.
