@@ -18,7 +18,7 @@ Esta iteración convierte las recomendaciones de la conversación adjunta en lí
 
 ## Casos y variaciones
 
-El catálogo [`cases-and-variations.md`](cases-and-variations.md) cubre las rutas actualmente activas de ingreso, identidad, servicio, evaluación y corpus, así como las variaciones propuestas que permanecen bloqueadas. Cada caso declara su entrada, salida esperada, límite de seguridad y perfil de prueba. La documentación no interpreta los fixtures como un benchmark real ni convierte el tráfico no etiquetado en ground truth.
+El catálogo [`cases-and-variations.md`](../../cases-and-variations.md) cubre las rutas actualmente activas de ingreso, identidad, servicio, evaluación y corpus, así como las variaciones propuestas que permanecen bloqueadas. Cada caso declara su entrada, salida esperada, límite de seguridad y perfil de prueba. La documentación no interpreta los fixtures como un benchmark real ni convierte el tráfico no etiquetado en ground truth.
 
 | Perfil | Propósito | Aislamiento |
 |---|---|---|

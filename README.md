@@ -1,8 +1,24 @@
 # Agent Traffic Intelligence
 
+[![CI](https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence/actions/workflows/ci.yml/badge.svg)](https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence/actions/workflows/codeql.yml/badge.svg)](https://github.com/jccontrerasg08-cpu/agent-traffic-intelligence/actions/workflows/codeql.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Self-hosted, explainable intelligence for automated and AI-originated web traffic.
 
 > **Status: pre-alpha / observe-only.** V1 can verify selected machine identities, but ATI still does not block, challenge, throttle, or mutate production traffic.
+
+## At a glance
+
+| | |
+|---|---|
+| **What** | Classifies web traffic along four independent axes (automation, AI-relatedness, verified identity, risk), explains every score with evidence, and never acts on traffic. |
+| **Why it is hard** | The labels that make evaluation possible also leak the answer. Most of the engineering goes into making the evaluation impossible to flatter. |
+| **Stack** | Python 3.11 standard library only (cryptography optional), `mypy --strict`, Hypothesis; a FastAPI origin on Railway behind a Cloudflare Worker in the companion [observation laboratory](https://github.com/jccontrerasg08-cpu/ati-observation-lab); BigQuery for run results. |
+| **Evidence** | 459 tests with an 85% coverage gate; 22/22 live perimeter checks in production; a 24-session live campaign through the real edge. |
+| **Read next** | [Case study](docs/case-study.md) · [Engineering principles in practice](docs/engineering-principles.md) · [Documentation map](docs/README.md) · [Decision records](docs/README.md#decisions) |
 
 ## Why this exists
 
