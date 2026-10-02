@@ -9,6 +9,8 @@ All notable changes will be documented here.
 - Observe-only V0 architecture, privacy-safe JSONL normalization, curated agent claims, bounded request/session features, four independent scores, and the original CLI.
 - ATI-PF-2 baseline ladder (`ati pf2-baseline`): forward-chained temporal, leave-one-task-out and grouped-session holdouts, a constant-prevalence baseline, a dependency-free L2-regularized logistic regression, train-partition-only standardization and threshold selection, session-cluster resampling intervals, and one refit ablation per permitted feature family.
 - Privacy-safe warehouse export (`ati pf2-export-bigquery`): aggregate run, metric, ablation, feature-summary and cohort tables with BigQuery schemas and DDL. The split manifest is not exportable and per-session feature rows are reduced to per-class aggregates.
+- A case study, an engineering-principles map tied to concrete files, a documentation map grouped by reader intent, and ADRs 0007 (the PF-2 feature firewall) and 0008 (aggregate-only warehouse export).
+- `tests/test_docs_links.py`, which fails the suite on any broken relative link in the repository's Markdown.
 - Live ATI-PF-2 collection evidence recording a 24-session multi-family run through the deployed Cloudflare Worker, the reconciliation result, and the preflight's fail-closed refusal of the single-class corpus.
 - Ephemeral V1 `VerificationContext` so raw source addresses and signature material can be verified without entering persisted `RequestEvent` or detection output.
 - Versioned, explainable identity verification results with provider-, agent-, and key-scoped evidence plus explicit `claimed`, `verified`, `failed`, and `conflicted` resolution states.
@@ -22,6 +24,8 @@ All notable changes will be documented here.
 ### Changed
 
 - `evaluation` is a package: metrics in `evaluation.metrics`, campaign planning in `evaluation.campaign`, and the ATI-PF-2 protocol, baseline and export in `evaluation.pf2`. The public `evaluation` surface is unchanged, and `campaign_protocol` and `pf2_protocol` remain as compatibility facades. Evaluation tests moved from `tests/research` to `tests/evaluation`, so `make test-evaluation` now covers the whole area and `make test-research` covers research contracts only.
+- The CLI parser, the warehouse export and the baseline ladder are split into named single-purpose functions. Behaviour is unchanged: the parser tree, a baseline report and an export are byte-identical before and after.
+- Dated design specs, implementation plans and audit notes moved from `docs/` and `docs/superpowers/` into `docs/history/`, indexed and marked as historical.
 - The ATI-PF-2 route mapping is public as `PF2_ROUTE_CATEGORIES`, versioned as `PF2_CATALOGUE_VERSION`, and pinned by test to the laboratory's closed catalogue.
 - `pr_auc` and `expected_calibration_error` are part of the evaluation module's public surface so the ATI-PF-2 baseline reuses one metric implementation.
 - Provider verification profiles were re-reviewed against current primary sources; Anthropic no longer carries an IP-range source because Anthropic does not publish crawler IP ranges.

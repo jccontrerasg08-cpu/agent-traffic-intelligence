@@ -34,4 +34,4 @@ Enable:
 
 Enable Discussions for research/design questions. Keep security reports out of public issues.
 
-See also [`github-bootstrap.md`](github-bootstrap.md) for first-push commands.
+See also [`history/github-bootstrap.md`](history/github-bootstrap.md) for first-push commands.

@@ -1,6 +1,6 @@
 # V1 Repository Hardening Addendum
 
-> **Normative companion to:** `docs/superpowers/plans/2026-08-14-v1-verified-identity.md`
+> **Normative companion to:** `docs/history/plans/2026-08-14-v1-verified-identity.md`
 >
 > **Source basis:** user-provided TensorFlow repository engineering review, adapted to Agent Traffic Intelligence (ATI). This document adopts engineering patterns, not TensorFlow's architecture or scale.
 
