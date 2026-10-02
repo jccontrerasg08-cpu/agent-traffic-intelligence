@@ -159,7 +159,7 @@ scale: an unmatched design scores a PR-AUC of 1.000 and means nothing
 - Gebru et al., *Datasheets for Datasets*, Communications of the ACM 64(12), 2021,
   [doi:10.1145/3458723](https://doi.org/10.1145/3458723). It is the model for the
   laboratory's
-  [corpus datasheet](https://github.com/jccontrerasg08-cpu/ati-observation-lab/blob/main/docs/custom-domain-corpus-datasheet.md).
+  [corpus datasheet](https://github.com/jccontrerasg08-cpu/ati-observation-lab/blob/main/docs/pf2-corpus-datasheet.md).
 
 | Leakage type (Kapoor and Narayanan) | Guard in ATI or the laboratory |
 |---|---|
