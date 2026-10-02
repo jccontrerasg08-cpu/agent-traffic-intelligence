@@ -248,7 +248,7 @@ Read [`SECURITY.md`](SECURITY.md), [`docs/threat-model.md`](docs/threat-model.md
 
 ## Research positioning
 
-The project is informed by, but does not copy, work including Anubis, CrowdSec, FingerprintJS BotD, FPScanner, AgentECHO, Logwick, River, JA4/JA4+, crawler/adversarial tooling, and industry research on differentiating AI traffic types. See [`docs/research/open-source-landscape.md`](docs/research/open-source-landscape.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The project is informed by, but does not copy, work including Anubis, CrowdSec, ai.robots.txt, Logwick, cloudflare/web-bot-auth, FingerprintJS BotD, FPScanner, JA4/JA4+, and the leakage literature (Kaufman et al. 2012; Kapoor and Narayanan 2023). The [landscape review](docs/research/open-source-landscape.md) compares them with ATI, with a source for every claim and a table mapping each kind of leakage to the guard that prevents it and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 Our intended differentiation is the combination of:
 
