@@ -4,7 +4,7 @@
 **Revisión auditada:** `91c93ece38336851c6048b1207ad0edde2df5574` (`HEAD` = `origin/main`)
 **Autor:** Manus AI
 
-> **Actualización de seguimiento:** el árbol local posterior a esta auditoría incorpora `railway.toml`, el proceso `ati-service`, `GET /health`, un endpoint de análisis autenticado y pruebas de regresión. Esto resuelve localmente los hallazgos P0/P1 de proceso, puerto, salud y configuración versionada. No cambia el límite de acceso: todavía no se observó ni modificó el servicio remoto de Railway, y Railway no verá el cambio hasta que se revise, confirme y publique en la rama de despliegue. Véase [`railway-observe-only.md`](railway-observe-only.md).
+> **Actualización de seguimiento:** el árbol local posterior a esta auditoría incorpora `railway.toml`, el proceso `ati-service`, `GET /health`, un endpoint de análisis autenticado y pruebas de regresión. Esto resuelve localmente los hallazgos P0/P1 de proceso, puerto, salud y configuración versionada. No cambia el límite de acceso: todavía no se observó ni modificó el servicio remoto de Railway, y Railway no verá el cambio hasta que se revise, confirme y publique en la rama de despliegue. Véase [`railway-observe-only.md`](../../railway-observe-only.md).
 
 ## Dictamen ejecutivo
 
