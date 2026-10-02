@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -81,6 +81,7 @@ class FakeFetcher:
     def __init__(self, results: list[FetchResult]) -> None:
         self.results = results
         self.calls: list[tuple[str, str | None, str | None]] = []
+        self.follow_redirects: list[bool] = []
 
     def fetch(
         self,
@@ -88,8 +89,10 @@ class FakeFetcher:
         *,
         etag: str | None = None,
         last_modified: str | None = None,
+        follow_redirects: bool = True,
     ) -> FetchResult:
         self.calls.append((uri, etag, last_modified))
+        self.follow_redirects.append(follow_redirects)
         return self.results.pop(0)
 
 
@@ -405,3 +408,41 @@ def test_malformed_refresh_is_rejected_before_replacing_cache(
     cached = cache.get(spec.uri)
     assert cached is not None
     assert cached.metadata.sha256 == original.metadata.sha256
+
+
+def test_key_discovery_does_not_follow_redirects_but_range_sources_may(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    ranges = range_spec()
+    directory = directory_spec()
+    monkeypatch.setattr(service, "configured_sources", lambda: (ranges, directory))
+    signed, _ = _signed_directory_fetch_result(directory)
+    fetcher = FakeFetcher([fetch_result(ranges), signed])
+
+    refresh_sources(SourceCache(tmp_path), fetcher=fetcher)
+
+    assert fetcher.follow_redirects == [True, False]
+
+
+@pytest.mark.parametrize(
+    ("status", "redirects"),
+    [(203, 0), (200, 1)],
+    ids=["non-200-success", "redirected"],
+)
+def test_key_discovery_requires_a_direct_200(
+    tmp_path,
+    monkeypatch,
+    status: int,
+    redirects: int,
+) -> None:
+    spec = directory_spec()
+    monkeypatch.setattr(service, "configured_sources", lambda: (spec,))
+    signed, _ = _signed_directory_fetch_result(spec)
+    result = replace(signed, status=status, redirects=redirects)
+    cache = SourceCache(tmp_path)
+
+    with pytest.raises(ValueError, match="HTTP 200 without redirects"):
+        refresh_sources(cache, fetcher=FakeFetcher([result]))
+
+    assert cache.get(spec.uri) is None

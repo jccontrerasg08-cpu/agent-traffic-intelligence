@@ -23,6 +23,7 @@ All notable changes will be documented here.
 
 ### Changed
 
+- Web Bot Auth is pinned to the IETF working-group draft `draft-ietf-webbotauth-httpsig-protocol-00` (adopted 2026-09-01), which also absorbs the HTTP Message Signatures Directory draft. The review is recorded in `docs/standards-status.md`, and the draft's Appendix E.2 test vectors run against the real verifier.
 - `evaluation` is a package: metrics in `evaluation.metrics`, campaign planning in `evaluation.campaign`, and the ATI-PF-2 protocol, baseline and export in `evaluation.pf2`. The public `evaluation` surface is unchanged, and `campaign_protocol` and `pf2_protocol` remain as compatibility facades. Evaluation tests moved from `tests/research` to `tests/evaluation`, so `make test-evaluation` now covers the whole area and `make test-research` covers research contracts only.
 - The CLI parser, the warehouse export and the baseline ladder are split into named single-purpose functions. Behaviour is unchanged: the parser tree, a baseline report and an export are byte-identical before and after.
 - Dated design specs, implementation plans and audit notes moved from `docs/` and `docs/superpowers/` into `docs/history/`, indexed and marked as historical.
@@ -35,6 +36,9 @@ All notable changes will be documented here.
 
 ### Fixed
 
+- A Web Bot Auth signature is no longer attributed to a `Signature-Agent` member that belongs to another signer. It binds to the member under its own label, or to the single member it covers, as the working-group draft requires.
+- RFC 9421 `created` and `expires` are judged at the request's time rather than the wall clock, so analysing a log older than the validity window no longer rejects every valid signature.
+- Key-directory refresh no longer follows redirects or accepts a status other than 200 (or a 304 revalidation), per the draft's discovery rule.
 - Source refresh no longer passes unsupported metadata into `SourceDocument` construction.
 - Refreshed source documents are validated before replacing the previous cache entry, so malformed provider material cannot silently displace a known-good snapshot.
 - RFC 9421 nonce handling now reads the verified signature parameter rather than a non-existent result attribute.

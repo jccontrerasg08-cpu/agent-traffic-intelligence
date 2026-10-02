@@ -132,11 +132,15 @@ def refresh_sources(
         if provider is not None and spec.provider.casefold() != provider.casefold():
             continue
         previous = cache.get(spec.uri)
+        is_directory = spec.source_type is SourceType.KEY_DIRECTORY
         result = client.fetch(
             spec.uri,
             etag=previous.metadata.etag if previous else None,
             last_modified=previous.metadata.last_modified if previous else None,
+            follow_redirects=not is_directory,
         )
+        if is_directory:
+            _require_discovery_status(result)
         if result.not_modified:
             if previous is None:
                 raise ValueError("received 304 Not Modified without a cached source")
@@ -146,6 +150,19 @@ def refresh_sources(
         cache.put(_document_from_result(spec, result))
         refreshed += 1
     return refreshed, not_modified
+
+
+def _require_discovery_status(result: FetchResult) -> None:
+    """Hold key discovery to the protocol: 200 only, never a redirect.
+
+    draft-ietf-webbotauth-httpsig-protocol-00, Section 5.5, makes any other status a
+    discovery failure. A 304 is accepted because it only revalidates a 200 already held
+    and brings no new content.
+    """
+    if result.redirects or result.status not in (200, 304):
+        raise ValueError(
+            f"key directory discovery requires HTTP 200 without redirects, got {result.status}"
+        )
 
 
 def _source_created_at(spec: SourceSpec, content: bytes) -> datetime | None:

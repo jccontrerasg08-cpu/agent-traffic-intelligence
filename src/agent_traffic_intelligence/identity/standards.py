@@ -25,9 +25,11 @@ class StandardsProfile:
 
 DEFAULT_STANDARDS_PROFILE = StandardsProfile(
     http_message_signatures="RFC9421",
-    web_bot_auth_protocol="draft-meunier-webbotauth-httpsig-protocol-01",
-    message_signatures_directory="draft-meunier-webbotauth-httpsig-directory-00",
+    # The IETF webbotauth working group adopted the protocol on 2026-09-01. Its -00
+    # also absorbed the HTTP Message Signatures Directory draft (now Section 5.5).
+    web_bot_auth_protocol="draft-ietf-webbotauth-httpsig-protocol-00",
+    message_signatures_directory="draft-ietf-webbotauth-httpsig-protocol-00",
     jafar="draft-illyes-webbotauth-jafar-00",
     agent_card="draft-meunier-webbotauth-registry-03",
-    reviewed_on="2026-08-14",
+    reviewed_on="2026-10-02",
 )

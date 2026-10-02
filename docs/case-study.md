@@ -124,6 +124,14 @@ not clear the constant baseline.
 - **The preflight refused the live corpus**, as designed: every session was automated, so
   there is no second class. Labelling browser automation as "human" would have manufactured
   one.
+- **Standards drift, caught by the project's own monitor.** `ati standards health`
+  reported that the IETF had adopted the Web Bot Auth protocol as a working-group draft.
+  Reviewing the change and running the draft's official test vectors through the real
+  verifier found three defects. A signature could be attributed to another signer's
+  `Signature-Agent` member. Recorded logs older than a day failed to verify because the
+  signature library judged time by the wall clock. Key discovery followed redirects that
+  the protocol forbids. Each fix has a regression test
+  ([review record](standards-status.md#review-of-the-working-group-adoption-2026-10-02)).
 - **Warehouse.** Run results load into BigQuery as aggregate-only, append-only tables keyed
   by run ([ADR 0008](adr/0008-aggregate-only-warehouse-export.md)), verified end to end in a
   disposable self-test dataset.
@@ -137,7 +145,7 @@ not clear the constant baseline.
 
 ## Engineering practice
 
-- Python 3.11+, `mypy --strict`, `ruff`. 459 tests in ATI with an 85% coverage gate; 110
+- Python 3.11+, `mypy --strict`, `ruff`. 479 tests in ATI with an 85% coverage gate; 110
   Python and 23 Worker tests in the laboratory. Property-based tests (Hypothesis) for the
   parser, the IP-range logic and the evaluation splits.
 - CI installs hash-pinned dependencies and runs per-area test profiles, CodeQL, OpenSSF Scorecard, dependency review and a

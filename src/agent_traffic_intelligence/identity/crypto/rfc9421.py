@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Any, Protocol, cast
 
@@ -66,7 +66,15 @@ class Rfc9421Verifier:
         expect_tag: str,
         required_components: frozenset[str] = frozenset(),
         max_age_seconds: int = 24 * 60 * 60,
+        now: datetime | None = None,
     ) -> Rfc9421Result:
+        """Verify one algorithm's signatures, judging their time window at ``now``.
+
+        ``now`` defaults to the wall clock. Pass the request's own time when verifying a
+        recorded log, or every signature older than its validity window fails.
+        """
+        if now is not None and (now.tzinfo is None or now.utcoffset() is None):
+            raise ValueError("RFC 9421 verification time must be timezone-aware")
         if not context.signature or not context.signature_input or not context.target_uri:
             return self._result(
                 VerificationOutcome.UNAVAILABLE,
@@ -94,7 +102,7 @@ class Rfc9421Verifier:
             )
 
         try:
-            verifier = hms.HTTPMessageVerifier(
+            verifier = self._verifier_class(hms, now)(
                 signature_algorithm=algorithm,
                 key_resolver=self._key_resolver,
                 component_resolver_class=self._component_resolver(hms),
@@ -156,6 +164,60 @@ class Rfc9421Verifier:
             parameters=parameters,
             nonce=str(nonce_value) if nonce_value is not None else None,
         )
+
+    @staticmethod
+    def _verifier_class(hms: Any, now: datetime | None) -> type:
+        """Return the library verifier, with its time checks moved to ``now`` if given.
+
+        The library compares created and expires with the wall clock. Its rules are kept
+        as they are: created may not be in the future, expires may not be in the past,
+        and created may not be older than the maximum age, each with the library's skew.
+        """
+        base = hms.HTTPMessageVerifier
+        if now is None:
+            return cast(type, base)
+        reference = now.timestamp()
+
+        class ClockedVerifier(base):  # type: ignore[misc, valid-type]
+            def validate_created_and_expires(
+                self, sig_input: Any, max_age: timedelta | None = None
+            ) -> None:
+                skew = self.max_clock_skew.total_seconds()
+                params = sig_input.params
+                created = self._timestamp(params, "created")
+                expires = self._timestamp(params, "expires")
+                if created is None:
+                    if self.require_created:
+                        raise hms.InvalidSignature(
+                            'Signature is missing a required "created" parameter'
+                        )
+                elif created > reference + skew:
+                    raise hms.InvalidSignature(
+                        'Signature "created" parameter is set to a time in the future'
+                    )
+                if expires is not None and expires < reference - skew:
+                    raise hms.InvalidSignature(
+                        'Signature "expires" parameter is set to a time in the past'
+                    )
+                if (
+                    max_age is not None
+                    and created is not None
+                    and created + max_age.total_seconds() < reference - skew
+                ):
+                    raise hms.InvalidSignature(
+                        f"Signature age exceeds maximum allowable age {max_age}"
+                    )
+
+            @staticmethod
+            def _timestamp(params: Mapping[str, Any], name: str) -> int | None:
+                if name not in params:
+                    return None
+                try:
+                    return int(params[name])
+                except (TypeError, ValueError) as exc:
+                    raise hms.InvalidSignature(f'Malformed "{name}" parameter') from exc
+
+        return ClockedVerifier
 
     @staticmethod
     def _component_resolver(hms: Any) -> type:

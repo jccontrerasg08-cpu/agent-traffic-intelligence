@@ -292,17 +292,15 @@ class DatatrackerJsonClient:
 def default_draft_pins(
     profile: StandardsProfile = DEFAULT_STANDARDS_PROFILE,
 ) -> tuple[DraftPin, ...]:
-    """Return only the revisioned Internet-Drafts implemented by ATI."""
+    """Return each revisioned Internet-Draft implemented by ATI, once."""
 
-    return tuple(
-        DraftPin.from_pinned(value)
-        for value in (
-            profile.web_bot_auth_protocol,
-            profile.message_signatures_directory,
-            profile.jafar,
-            profile.agent_card,
-        )
+    pinned = (
+        profile.web_bot_auth_protocol,
+        profile.message_signatures_directory,
+        profile.jafar,
+        profile.agent_card,
     )
+    return tuple(DraftPin.from_pinned(value) for value in dict.fromkeys(pinned))
 
 
 def document_api_url(pin: DraftPin) -> str:

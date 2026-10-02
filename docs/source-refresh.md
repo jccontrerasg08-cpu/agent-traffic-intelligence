@@ -48,7 +48,7 @@ Provider source refresh uses the hardened HTTPS fetcher. It:
 - uses ETag/Last-Modified conditional requests when cached validators are available;
 - never accepts a request-controlled `Signature-Agent` URI as authority to refresh a source.
 
-Client-ID/CIMD retrieval has an even stricter contract: exact `200`, no redirects, HTTPS, and exact character-for-character `client_id` equality with the requested identifier.
+Key-directory refresh follows the protocol's discovery rule: exact `200` (or `304` to revalidate a cached `200`) and no redirects. Client-ID/CIMD retrieval has an even stricter contract: exact `200`, no redirects, HTTPS, and exact character-for-character `client_id` equality with the requested identifier.
 
 ## Cache and provenance
 
