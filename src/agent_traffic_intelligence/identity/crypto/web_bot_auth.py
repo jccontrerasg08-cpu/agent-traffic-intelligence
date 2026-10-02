@@ -48,9 +48,13 @@ _WEB_BOT_AUTH_TAG = "web-bot-auth"
 _MAX_VALIDITY_SECONDS = 24 * 60 * 60
 _CLOCK_SKEW_SECONDS = 5
 _KEY_PARAM_RE = re.compile(r';key="([^"\\]+)"')
-_DIRECTORY_SOURCE_PROFILE = (
-    f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+"
-    f"{DEFAULT_STANDARDS_PROFILE.message_signatures_directory}"
+_DIRECTORY_SOURCE_PROFILE = "+".join(
+    dict.fromkeys(
+        (
+            DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol,
+            DEFAULT_STANDARDS_PROFILE.message_signatures_directory,
+        )
+    )
 )
 _GENERIC_JWKS_SOURCE_PROFILE = (
     f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+RFC7517"
@@ -67,6 +71,7 @@ class RfcVerifier(Protocol):
         expect_tag: str,
         required_components: frozenset[str] = frozenset(),
         max_age_seconds: int = _MAX_VALIDITY_SECONDS,
+        now: datetime | None = None,
     ) -> Rfc9421Result: ...
 
 
@@ -174,7 +179,7 @@ class WebBotAuthVerifier:
                     {"directory_trusted": True, "key_source_trusted": True},
                 )
 
-        result = self._verify_rfc(context)
+        result = self._verify_rfc(context, now)
         if result.outcome is not VerificationOutcome.PASS:
             return self._evidence(
                 claim,
@@ -243,7 +248,8 @@ class WebBotAuthVerifier:
             if selected is None:
                 return self._mismatch(
                     claim,
-                    "Signature-Agent was not covered by the verified signature",
+                    "the verified signature does not cover exactly one Signature-Agent "
+                    "member identifying it (its own label's member when present)",
                 )
             try:
                 referenced_uri = canonicalize_source_uri(selected.uri)
@@ -313,7 +319,7 @@ class WebBotAuthVerifier:
             return key.key_id
         return key.thumbprint
 
-    def _verify_rfc(self, context: VerificationContext) -> Rfc9421Result:
+    def _verify_rfc(self, context: VerificationContext, now: datetime) -> Rfc9421Result:
         results: list[Rfc9421Result] = []
         for algorithm_id in self._candidate_algorithms():
             result = self._rfc.verify(
@@ -321,6 +327,7 @@ class WebBotAuthVerifier:
                 algorithm_id=algorithm_id,
                 expect_tag=_WEB_BOT_AUTH_TAG,
                 max_age_seconds=self._policy.max_validity_seconds,
+                now=now,
             )
             if result.outcome is VerificationOutcome.PASS:
                 return result
@@ -401,6 +408,18 @@ class WebBotAuthVerifier:
         result: Rfc9421Result,
         references: tuple[SignatureAgentReference, ...],
     ) -> SignatureAgentReference | None:
+        """Return the Signature-Agent member that identifies this signature, if any.
+
+        A signature is only ever attributed to a member it covers. When the header
+        has a member keyed to this signature's own label, that member is its
+        identity and must be the covered one: covering another signer's member is
+        evidence about that signer, never this signature's identity. Without an
+        own-label member, exactly one covered member is accepted, as in the
+        draft's own test vectors (label ``sig2``, member ``agent2``); several are
+        ambiguous. A legacy bare string has no key and is covered as plain
+        ``"signature-agent"``.
+        """
+
         signed_keys: set[str | None] = set()
         for component in result.covered_components or {}:
             component_name = component.split(";", 1)[0].strip('"').casefold()
@@ -408,10 +427,15 @@ class WebBotAuthVerifier:
                 continue
             match = _KEY_PARAM_RE.search(component)
             signed_keys.add(match.group(1) if match else None)
-        return next(
-            (reference for reference in references if reference.label in signed_keys),
-            None,
-        )
+
+        legacy = [reference for reference in references if reference.legacy]
+        if legacy:
+            return legacy[0] if None in signed_keys else None
+        own = [reference for reference in references if reference.label == result.label]
+        if own:
+            return own[0] if result.label in signed_keys else None
+        covered = [reference for reference in references if reference.label in signed_keys]
+        return covered[0] if len(covered) == 1 else None
 
     def _mismatch(
         self,

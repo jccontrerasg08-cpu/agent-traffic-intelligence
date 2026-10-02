@@ -19,6 +19,7 @@ from agent_traffic_intelligence.identity.crypto.rfc9421_response import (
 from agent_traffic_intelligence.identity.crypto.signature_agent import (
     structured_fields_module,
 )
+from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 hms = pytest.importorskip("http_message_signatures")
 algorithms = pytest.importorskip("http_message_signatures.algorithms")
@@ -140,4 +141,4 @@ def test_valid_signed_directory_response_binds_key_to_request_authority() -> Non
     assert binding.key_thumbprint == resolver.key_id
     assert binding.authority == "agent.example"
     assert binding.body_sha256 == hashlib.sha256(body).hexdigest()
-    assert binding.profile == "draft-meunier-webbotauth-httpsig-directory-00"
+    assert binding.profile == DEFAULT_STANDARDS_PROFILE.message_signatures_directory

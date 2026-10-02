@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -62,11 +62,12 @@ def signed_message(
     *,
     covered: tuple[str, ...] = ("@authority",),
     signature_agent: str | None = None,
+    created: datetime | None = None,
 ) -> Message:
     message = Message("GET", "https://example.com/docs?x=1", {})
     if signature_agent is not None:
         message.headers["Signature-Agent"] = signature_agent
-    now = datetime.now()
+    now = created or datetime.now(UTC)
     signer = hms.HTTPMessageSigner(
         signature_algorithm=algorithms.ED25519,
         key_resolver=resolver,
@@ -162,3 +163,79 @@ def test_tampering_and_missing_required_component_are_mismatches() -> None:
         expect_tag="web-bot-auth",
         required_components=frozenset({"@authority"}),
     ).outcome is VerificationOutcome.MISMATCH
+
+
+A_YEAR_AGO = datetime.now(UTC).replace(microsecond=0) - timedelta(days=365)
+
+
+def verify_at(
+    message: Message, resolver: KeyResolver, now: datetime | None, max_age: int = 86400
+) -> VerificationOutcome:
+    return Rfc9421Verifier(resolver).verify(
+        context_from(message),
+        algorithm_id="ed25519",
+        expect_tag="web-bot-auth",
+        max_age_seconds=max_age,
+        now=now,
+    ).outcome
+
+
+def test_a_recorded_signature_is_judged_at_the_time_of_its_request() -> None:
+    resolver = KeyResolver()
+    message = signed_message(resolver, created=A_YEAR_AGO)
+
+    assert verify_at(message, resolver, A_YEAR_AGO + timedelta(minutes=1)) is (
+        VerificationOutcome.PASS
+    )
+    assert verify_at(message, resolver, None) is VerificationOutcome.MISMATCH
+
+
+@pytest.mark.parametrize(
+    ("offset", "max_age"),
+    [
+        (timedelta(minutes=-1), 86400),
+        (timedelta(minutes=6), 86400),
+        (timedelta(minutes=2), 60),
+    ],
+    ids=["created-in-the-future", "expired", "older-than-max-age"],
+)
+def test_the_time_window_is_enforced_at_the_given_time(
+    offset: timedelta, max_age: int
+) -> None:
+    resolver = KeyResolver()
+    message = signed_message(resolver, created=A_YEAR_AGO)
+
+    assert verify_at(message, resolver, A_YEAR_AGO + offset, max_age) is (
+        VerificationOutcome.MISMATCH
+    )
+
+
+@pytest.mark.parametrize(
+    ("replacement", "reason"),
+    [("", "missing"), ('created="soon";', "Malformed")],
+)
+def test_a_missing_or_malformed_created_is_rejected_at_the_given_time(
+    replacement: str, reason: str
+) -> None:
+    resolver = KeyResolver()
+    message = signed_message(resolver, created=A_YEAR_AGO)
+    created = f"created={int(A_YEAR_AGO.timestamp())};"
+    message.headers["Signature-Input"] = message.headers["Signature-Input"].replace(
+        created, replacement
+    )
+
+    result = Rfc9421Verifier(resolver).verify(
+        context_from(message),
+        algorithm_id="ed25519",
+        expect_tag="web-bot-auth",
+        now=A_YEAR_AGO,
+    )
+
+    assert result.outcome is VerificationOutcome.MISMATCH
+    assert reason in result.explanation
+
+
+def test_a_naive_verification_time_is_refused() -> None:
+    resolver = KeyResolver()
+    with pytest.raises(ValueError, match="timezone-aware"):
+        verify_at(signed_message(resolver), resolver, datetime(2026, 1, 1))

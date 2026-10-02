@@ -169,6 +169,7 @@ class SafeFetcher:
         *,
         etag: str | None = None,
         last_modified: str | None = None,
+        follow_redirects: bool = True,
     ) -> FetchResult:
         headers: dict[str, str] = {}
         if etag is not None:
@@ -188,6 +189,8 @@ class SafeFetcher:
                 max_bytes=self._max_bytes,
             )
             if response.status in _REDIRECT_STATUSES:
+                if not follow_redirects:
+                    raise FetchProtocolError("redirects are not followed for this source")
                 if redirects >= self._max_redirects:
                     raise FetchProtocolError("redirect limit exceeded")
                 location = self._header(response.headers, "location")

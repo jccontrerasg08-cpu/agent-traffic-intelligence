@@ -54,9 +54,10 @@ def response(
 def test_default_draft_pins_follow_the_current_standards_profile() -> None:
     pins = default_draft_pins()
 
+    # The working-group protocol draft absorbed the directory draft, so the one
+    # document is checked once even though two profile fields name it.
     assert tuple(pin.pinned for pin in pins) == (
-        "draft-meunier-webbotauth-httpsig-protocol-01",
-        "draft-meunier-webbotauth-httpsig-directory-00",
+        "draft-ietf-webbotauth-httpsig-protocol-00",
         "draft-illyes-webbotauth-jafar-00",
         "draft-meunier-webbotauth-registry-03",
     )
@@ -66,7 +67,7 @@ def test_document_api_url_is_generated_from_the_pin_only() -> None:
     pin = default_draft_pins()[0]
     assert document_api_url(pin) == (
         "https://datatracker.ietf.org/api/v1/doc/document/"
-        "draft-meunier-webbotauth-httpsig-protocol/"
+        "draft-ietf-webbotauth-httpsig-protocol/"
     )
 
 
@@ -182,7 +183,7 @@ def test_check_pinned_drafts_aggregates_current_results_without_mutation() -> No
     )
 
     assert report.review_required is False
-    assert len(report.drafts) == 4
+    assert len(report.drafts) == len(default_draft_pins()) == 3
     assert all(item.status is DraftHealthStatus.CURRENT for item in report.drafts)
 
 

@@ -81,7 +81,7 @@ was measured and, separately, what was **not** established.
 
 ## Research
 
-[Open-source landscape](research/open-source-landscape.md): adjacent projects and how ATI differs.
+[Landscape](research/open-source-landscape.md): adjacent projects and papers, how ATI differs, and the leakage taxonomy mapped to ATI's guards.
 
 ## History
 

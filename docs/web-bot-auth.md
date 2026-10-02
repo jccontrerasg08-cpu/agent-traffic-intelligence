@@ -8,13 +8,15 @@ A cryptographically valid request is not automatically a verified bot. ATI indep
 
 1. RFC 9421 signature validity.
 2. `tag="web-bot-auth"` selection to prevent signature confusion.
-3. `created` / `expires` under a bounded ATI validity window.
+3. `created` / `expires` under a bounded ATI validity window, judged at the time the request was made, so a recorded log verifies the same way it would have live.
 4. Required signed request components such as `@authority` / `@target-uri`.
 5. JWK/key compatibility and active key lifetime where the source format defines one.
 6. The discovery/source policy that made the key available.
-7. Signed `Signature-Agent` binding when the request uses it.
+7. Signed `Signature-Agent` binding when the request uses it: a signature is attributed only to the member keyed by its own label, or, when there is none, to the single member it covers. A signature that covers another signer's member is a mismatch.
 8. Optional bounded nonce replay detection.
 9. Provider/agent authority binding separately from mere key possession.
+
+The official Ed25519 vectors from `draft-ietf-webbotauth-httpsig-protocol-00` Appendix E.2, for both the dictionary and the legacy `Signature-Agent` forms, pass through this chain unchanged in [`test_webbotauth_wg_vectors.py`](../tests/identity/crypto/test_webbotauth_wg_vectors.py).
 
 Only components returned as covered by successful RFC 9421 verification are trusted. Authentication directly affects identity evidence; it does not by itself lower `risk_score` or change automation/AI classification.
 

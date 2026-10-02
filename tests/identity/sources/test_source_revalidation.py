@@ -27,6 +27,7 @@ class NotModifiedFetcher:
         *,
         etag: str | None = None,
         last_modified: str | None = None,
+        follow_redirects: bool = True,
     ) -> FetchResult:
         assert uri == DIRECTORY_URI
         assert etag == '"v1"'

@@ -156,6 +156,18 @@ def test_rejects_more_than_three_redirects() -> None:
         )
 
 
+def test_a_source_fetched_without_redirects_stops_at_the_first_one() -> None:
+    resolver = FakeResolver({"example.com": ("93.184.216.34",)})
+    transport = FakeTransport([response(302, Location="/moved")])
+
+    with pytest.raises(FetchProtocolError, match="not followed"):
+        SafeFetcher(resolver=resolver, transport=transport).fetch(
+            "https://example.com/start", follow_redirects=False
+        )
+
+    assert [call.uri for call in transport.calls] == ["https://example.com/start"]
+
+
 def test_rejects_oversized_body_and_wrong_media_type() -> None:
     resolver = FakeResolver({"example.com": ("93.184.216.34",)})
     oversized = FakeTransport([response(body=b"x" * (2 * 1024 * 1024 + 1))])

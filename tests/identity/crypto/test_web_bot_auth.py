@@ -44,6 +44,7 @@ class FakeRfcVerifier:
         expect_tag: str,
         required_components: frozenset[str] = frozenset(),
         max_age_seconds: int = 86400,
+        now: datetime | None = None,
     ) -> Rfc9421Result:
         return self.result
 
@@ -302,10 +303,9 @@ def test_evidence_reports_current_protocol_profile() -> None:
     )
 
     assert evidence.outcome is VerificationOutcome.PASS
-    assert evidence.source_profile == (
-        f"{DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol}+"
-        f"{DEFAULT_STANDARDS_PROFILE.message_signatures_directory}"
-    )
+    # The working-group draft carries both the protocol and the directory format,
+    # so it is named once rather than as "<draft>+<draft>".
+    assert evidence.source_profile == DEFAULT_STANDARDS_PROFILE.web_bot_auth_protocol
     assert "architecture-05" not in evidence.source_profile
     assert "directory-05" not in evidence.source_profile
 
@@ -436,7 +436,127 @@ def test_non_https_signed_identity_and_naive_clock_fail_closed() -> None:
         )
 
 
-def test_signature_agent_is_optional_when_directory_binding_is_otherwise_valid() -> None:
+class TwoMemberParser:
+    """A request carrying one Signature-Agent member per signer label."""
+
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        return (
+            SignatureAgentReference(label="sig1", uri="https://other.example"),
+            SignatureAgentReference(label="sig2", uri=DIRECTORY_URI),
+        )
+
+
+def verifier_with_parser(result: Rfc9421Result, parser: object) -> WebBotAuthVerifier:
+    return WebBotAuthVerifier(
+        directory=directory(),
+        directory_uri=DIRECTORY_URI,
+        signature_agent_uri=DIRECTORY_URI,
+        binding_scope=BindingScope.AGENT,
+        subject="ExampleBot",
+        trust_policy=SourceTrustPolicy(frozenset({DIRECTORY_URI})),
+        rfc_verifier=FakeRfcVerifier(result),
+        signature_agent_parser=parser,  # type: ignore[arg-type]
+    )
+
+
+def two_signer_verifier(result: Rfc9421Result) -> WebBotAuthVerifier:
+    return verifier_with_parser(result, TwoMemberParser())
+
+
+def test_a_signature_is_attributed_through_the_member_keyed_to_its_own_label() -> None:
+    # draft-ietf-webbotauth-httpsig-protocol-00 Section 5.2.1: the member keyed to
+    # the signature label MUST be signed, and it identifies that signer.
+    result = replace(
+        good_result(),
+        label="sig2",
+        covered_components={
+            '"@authority"': "example.com",
+            '"signature-agent";key="sig2"': f'"{DIRECTORY_URI}"',
+        },
+    )
+
+    evidence = two_signer_verifier(result).verify(
+        context=context('sig1="https://other.example", sig2="x"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.details["signature_agent_bound"] is True
+
+
+def test_covering_another_signers_member_does_not_attribute_the_signature_to_it() -> None:
+    # Section 5.2.2: a signer MAY cover another label's member as evidence that the
+    # other signer contributed, but that never makes it this signature's identity.
+    result = replace(
+        good_result(),
+        label="sig1",
+        covered_components={
+            '"@authority"': "example.com",
+            '"signature-agent";key="sig2"': f'"{DIRECTORY_URI}"',
+        },
+    )
+
+    evidence = two_signer_verifier(result).verify(
+        context=context('sig1="https://other.example", sig2="x"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.MISMATCH
+    assert "own label" in evidence.explanation
+
+
+class VectorShapedParser:
+    """The shape of the draft's Appendix E vectors: label sig2, member agent2."""
+
+    def parse(self, raw: str) -> tuple[SignatureAgentReference, ...]:
+        return (SignatureAgentReference(label="agent2", uri=DIRECTORY_URI),)
+
+
+def test_a_single_covered_member_under_another_key_is_accepted_as_in_the_vectors() -> None:
+    result = replace(
+        good_result(),
+        label="sig2",
+        covered_components={
+            '"@authority"': "example.com",
+            '"signature-agent";key="agent2"': f'"{DIRECTORY_URI}"',
+        },
+    )
+    vector_verifier = verifier_with_parser(result, VectorShapedParser())
+
+    evidence = vector_verifier.verify(
+        context=context(f'agent2="{DIRECTORY_URI}"'), claim=claim(), now=NOW
+    )
+
+    assert evidence.outcome is VerificationOutcome.PASS
+    assert evidence.details["signature_agent_bound"] is True
+
+
+def test_covering_several_members_without_an_own_label_member_is_ambiguous() -> None:
+    result = replace(
+        good_result(),
+        label="sig3",
+        covered_components={
+            '"@authority"': "example.com",
+            '"signature-agent";key="sig1"': '"https://other.example"',
+            '"signature-agent";key="sig2"': f'"{DIRECTORY_URI}"',
+        },
+    )
+
+    evidence = two_signer_verifier(result).verify(
+        context=context('sig1="https://other.example", sig2="x"'),
+        claim=claim(),
+        now=NOW,
+    )
+
+    assert evidence.outcome is VerificationOutcome.MISMATCH
+
+
+def test_a_signature_without_signature_agent_relies_on_the_verifier_held_key() -> None:
+    # Signers MUST send Signature-Agent under the working-group draft, and evidence
+    # records its absence. Attribution then rests on the association the verifier
+    # already holds between this curated key set and its agent (Sections 4.3, 4.4).
     evidence = verifier(good_result(nonce=None)).verify(
         context=context(None),
         claim=claim(),
