@@ -555,6 +555,16 @@ def _beats_baseline(
     return bool(logistic_auc > constant_auc and interval["lower"] > constant_auc)
 
 
+@dataclass(frozen=True, slots=True)
+class _LadderOptions:
+    """Hyperparameters shared by every model fitted and scored on every split."""
+
+    l2: float
+    target_false_positive_rate: float | None
+    resamples: int
+    seed: int
+
+
 def evaluate_pf2_baseline(
     model_rows: Iterable[Mapping[str, Any]],
     split_rows: Iterable[Mapping[str, Any]],
@@ -567,13 +577,7 @@ def evaluate_pf2_baseline(
 ) -> PF2BaselineReport:
     """Run the constant-prevalence and regularized-logistic ladder over fixed holdouts."""
 
-    if l2 <= 0:
-        raise PF2BaselineError("l2 must be positive so the baseline stays regularized")
-    if resamples < 2:
-        raise PF2BaselineError("resamples must be at least 2 for a session-cluster interval")
-    if target_false_positive_rate is not None and not 0.0 <= target_false_positive_rate <= 1.0:
-        raise PF2BaselineError("target_false_positive_rate must be between 0 and 1")
-
+    options = _validated_options(l2, target_false_positive_rate, resamples, seed)
     rows = [dict(row) for row in model_rows]
     feature_names = _validate_model_rows(rows)
     manifest = [dict(row) for row in split_rows]
@@ -589,95 +593,12 @@ def evaluate_pf2_baseline(
         grouped_holdout_fraction=grouped_holdout_fraction,
         seed=seed,
     )
-    inventory = {
-        name: {
-            "distinct_value_count": len({row[name] for row in rows}),
-            "missing_value_count": sum(name not in row for row in rows),
-        }
-        for name in feature_names
-    }
-    cohorts = {
-        "task": _cohort_counts(tasks, rows),
-        "collection_window": _cohort_counts(
-            {row: window for row, window in windows.items() if window is not None}, rows
-        ),
-    }
-
-    split_reports: list[dict[str, Any]] = []
-    single_class_split_count = 0
-    overlap_count = 0
     for split in splits:
-        overlap = set(split.train_rows) & set(split.holdout_rows)
-        overlap_count += len(overlap)
-        if overlap:
-            raise PF2BaselineError(
-                f"split {split.name!r} places the same opaque session in train and holdout"
-            )
-        train_targets = _targets(rows, split.train_rows)
-        holdout_targets = _targets(rows, split.holdout_rows)
-        entry: dict[str, Any] = {
-            "name": split.name,
-            "kind": split.kind,
-            "final_temporal_holdout": split.final_temporal_holdout,
-            "train_session_count": len(split.train_rows),
-            "holdout_session_count": len(split.holdout_rows),
-            "train_prevalence": (
-                sum(train_targets) / len(train_targets) if train_targets else None
-            ),
-            "holdout_prevalence": (
-                sum(holdout_targets) / len(holdout_targets) if holdout_targets else None
-            ),
-        }
-        if len(set(train_targets)) < 2 or len(set(holdout_targets)) < 2:
-            single_class_split_count += 1
-            entry["status"] = "blocked-single-class"
-            entry["models"] = {}
-            entry["ablations"] = {}
-            entry["logistic_beats_constant"] = None
-            split_reports.append(entry)
-            continue
-
-        train_design = _design(rows, split.train_rows, feature_names)
-        holdout_design = _design(rows, split.holdout_rows, feature_names)
-        prevalence = sum(train_targets) / len(train_targets)
-        constant = _evaluate_model(
-            [prevalence] * len(train_targets),
-            train_targets,
-            [prevalence] * len(holdout_targets),
-            holdout_targets,
-            target_false_positive_rate=target_false_positive_rate,
-            resamples=resamples,
-            seed=seed,
-        )
-        fitted = _fit_logistic(train_design, train_targets, feature_names, l2=l2)
-        logistic = _evaluate_model(
-            _predict(fitted, train_design),
-            train_targets,
-            _predict(fitted, holdout_design),
-            holdout_targets,
-            target_false_positive_rate=target_false_positive_rate,
-            resamples=resamples,
-            seed=seed,
-        )
-        logistic["converged"] = fitted.converged
-        logistic["newton_iterations"] = fitted.iterations
-        entry["status"] = "evaluated"
-        entry["models"] = {_CONSTANT_MODEL: constant, _LOGISTIC_MODEL: logistic}
-        entry["ablations"] = _ablations(
-            rows,
-            split,
-            feature_names,
-            train_targets=train_targets,
-            holdout_targets=holdout_targets,
-            full_model=logistic,
-            l2=l2,
-            target_false_positive_rate=target_false_positive_rate,
-            resamples=resamples,
-            seed=seed,
-        )
-        entry["logistic_beats_constant"] = _beats_baseline(logistic, constant)
-        split_reports.append(entry)
-
+        _assert_disjoint(split)
+    split_reports = [_evaluate_split(rows, split, feature_names, options) for split in splits]
+    single_class_split_count = sum(
+        entry["status"] == "blocked-single-class" for entry in split_reports
+    )
     final_temporal = next(
         (entry for entry in split_reports if entry["final_temporal_holdout"]), None
     )
@@ -688,7 +609,6 @@ def evaluate_pf2_baseline(
         if final_temporal is None
         else "evaluated"
     )
-    verdict = _verdict(final_temporal, target_false_positive_rate)
     report: dict[str, Any] = {
         "status": status,
         "session_count": len(rows),
@@ -702,16 +622,119 @@ def evaluate_pf2_baseline(
             "permitted_feature_count": len(feature_names),
             "prohibited_column_count": 0,
             "duplicate_session_count": 0,
-            "train_holdout_session_overlap_count": overlap_count,
+            # Every split was asserted disjoint above, so a report can only record zero.
+            "train_holdout_session_overlap_count": 0,
             "split_metadata_reached_estimator": False,
             "single_class_split_count": single_class_split_count,
         },
-        "feature_inventory": inventory,
-        "cohorts": cohorts,
+        "feature_inventory": _feature_inventory(rows, feature_names),
+        "cohorts": {
+            "task": _cohort_counts(tasks, rows),
+            "collection_window": _cohort_counts(
+                {row: window for row, window in windows.items() if window is not None}, rows
+            ),
+        },
         "splits": split_reports,
-        "verdict": verdict,
+        "verdict": _verdict(final_temporal, target_false_positive_rate),
     }
     return PF2BaselineReport(report=report)
+
+
+def _validated_options(
+    l2: float, target_false_positive_rate: float | None, resamples: int, seed: int
+) -> _LadderOptions:
+    if l2 <= 0:
+        raise PF2BaselineError("l2 must be positive so the baseline stays regularized")
+    if resamples < 2:
+        raise PF2BaselineError("resamples must be at least 2 for a session-cluster interval")
+    if target_false_positive_rate is not None and not 0.0 <= target_false_positive_rate <= 1.0:
+        raise PF2BaselineError("target_false_positive_rate must be between 0 and 1")
+    return _LadderOptions(l2, target_false_positive_rate, resamples, seed)
+
+
+def _assert_disjoint(split: PF2Split) -> None:
+    if set(split.train_rows) & set(split.holdout_rows):
+        raise PF2BaselineError(
+            f"split {split.name!r} places the same opaque session in train and holdout"
+        )
+
+
+def _feature_inventory(
+    rows: Sequence[Mapping[str, Any]], feature_names: Sequence[str]
+) -> dict[str, dict[str, int]]:
+    return {
+        name: {
+            "distinct_value_count": len({row[name] for row in rows}),
+            "missing_value_count": sum(name not in row for row in rows),
+        }
+        for name in feature_names
+    }
+
+
+def _evaluate_split(
+    rows: Sequence[Mapping[str, Any]],
+    split: PF2Split,
+    feature_names: Sequence[str],
+    options: _LadderOptions,
+) -> dict[str, Any]:
+    """Score both ladder rungs and the per-family ablations on one fixed holdout."""
+
+    train_targets = _targets(rows, split.train_rows)
+    holdout_targets = _targets(rows, split.holdout_rows)
+    entry: dict[str, Any] = {
+        "name": split.name,
+        "kind": split.kind,
+        "final_temporal_holdout": split.final_temporal_holdout,
+        "train_session_count": len(split.train_rows),
+        "holdout_session_count": len(split.holdout_rows),
+        "train_prevalence": sum(train_targets) / len(train_targets) if train_targets else None,
+        "holdout_prevalence": (
+            sum(holdout_targets) / len(holdout_targets) if holdout_targets else None
+        ),
+    }
+    if len(set(train_targets)) < 2 or len(set(holdout_targets)) < 2:
+        entry.update(
+            status="blocked-single-class", models={}, ablations={}, logistic_beats_constant=None
+        )
+        return entry
+
+    def evaluate(train_scores: Sequence[float], holdout_scores: Sequence[float]) -> dict[str, Any]:
+        return _evaluate_model(
+            train_scores,
+            train_targets,
+            holdout_scores,
+            holdout_targets,
+            target_false_positive_rate=options.target_false_positive_rate,
+            resamples=options.resamples,
+            seed=options.seed,
+        )
+
+    prevalence = sum(train_targets) / len(train_targets)
+    constant = evaluate([prevalence] * len(train_targets), [prevalence] * len(holdout_targets))
+    train_design = _design(rows, split.train_rows, feature_names)
+    holdout_design = _design(rows, split.holdout_rows, feature_names)
+    fitted = _fit_logistic(train_design, train_targets, feature_names, l2=options.l2)
+    logistic = evaluate(_predict(fitted, train_design), _predict(fitted, holdout_design))
+    logistic["converged"] = fitted.converged
+    logistic["newton_iterations"] = fitted.iterations
+    entry.update(
+        status="evaluated",
+        models={_CONSTANT_MODEL: constant, _LOGISTIC_MODEL: logistic},
+        ablations=_ablations(
+            rows,
+            split,
+            feature_names,
+            train_targets=train_targets,
+            holdout_targets=holdout_targets,
+            full_model=logistic,
+            l2=options.l2,
+            target_false_positive_rate=options.target_false_positive_rate,
+            resamples=options.resamples,
+            seed=options.seed,
+        ),
+        logistic_beats_constant=_beats_baseline(logistic, constant),
+    )
+    return entry
 
 
 def _cohort_counts(
