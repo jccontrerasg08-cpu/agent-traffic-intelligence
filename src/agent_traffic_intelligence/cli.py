@@ -13,7 +13,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
 from agent_traffic_intelligence import __version__
 from agent_traffic_intelligence.engine import Detector
@@ -68,6 +68,9 @@ from agent_traffic_intelligence.parsers.jsonl import (
 )
 from agent_traffic_intelligence.registry import AgentRegistry
 
+if TYPE_CHECKING:
+    # The subparser action type is only nameable through argparse's private API.
+    _Subparsers = argparse._SubParsersAction[argparse.ArgumentParser]
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -75,11 +78,50 @@ def _parser() -> argparse.ArgumentParser:
         description="Observe-only analysis of automated and AI-originated web traffic.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    # Registration order is the order `ati --help` lists the commands.
+    for add_command in (
+        _add_analyze_command,
+        _add_run_command,
+        _add_explain_command,
+        _add_evaluate_command,
+        _add_evaluate_stratified_command,
+        _add_pf2_preflight_command,
+        _add_pf2_baseline_command,
+        _add_pf2_export_command,
+        _add_campaign_command,
+        _add_registry_command,
+        _add_sources_command,
+        _add_standards_command,
+    ):
+        add_command(subparsers)
+    return parser
 
+
+def _add_max_line_characters(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--max-line-characters",
+        type=_positive_integer,
+        default=1_000_000,
+        help="Reject JSONL records longer than this many characters (default: 1000000).",
+    )
+
+
+def _add_threshold(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--threshold",
+        type=_unit_interval,
+        default=0.5,
+        help="Automation decision threshold from 0 to 1 (default: 0.5).",
+    )
+
+
+def _add_analyze_command(subparsers: _Subparsers) -> None:
     analyze = subparsers.add_parser("analyze", help="Analyze JSONL access logs.")
     _add_analysis_arguments(analyze)
     analyze.add_argument("--output", help="Write detection JSONL to this path; defaults to stdout.")
 
+
+def _add_run_command(subparsers: _Subparsers) -> None:
     run = subparsers.add_parser(
         "run",
         help="Create one local, atomic analysis and evaluation artifact directory.",
@@ -88,23 +130,17 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--run-dir", required=True, help="New local directory for safe outputs.")
     run.add_argument("--labels", required=True, help="Authorized local JSONL labels.")
     run.add_argument("--manifest", required=True, help="Authorized local corpus manifest.")
-    run.add_argument(
-        "--threshold",
-        type=_unit_interval,
-        default=0.5,
-        help="Automation decision threshold from 0 to 1 (default: 0.5).",
-    )
+    _add_threshold(run)
 
+
+def _add_explain_command(subparsers: _Subparsers) -> None:
     explain = subparsers.add_parser("explain", help="Pretty-print one detection and its evidence.")
     explain.add_argument("input", help="Detection JSONL file.")
     explain.add_argument("--request-id", required=True, help="Request identifier to explain.")
-    explain.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(explain)
 
+
+def _add_evaluate_command(subparsers: _Subparsers) -> None:
     evaluate = subparsers.add_parser(
         "evaluate",
         help="Evaluate automation scores against an authorized local label corpus.",
@@ -122,233 +158,198 @@ def _parser() -> argparse.ArgumentParser:
             "request_id, automated, label_source, label_confidence, and matching corpus_id."
         ),
     )
-    evaluate.add_argument(
-        "--threshold",
-        type=_unit_interval,
-        default=0.5,
-        help="Automation decision threshold from 0 to 1 (default: 0.5).",
-    )
-    evaluate.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_threshold(evaluate)
+    _add_max_line_characters(evaluate)
 
-    evaluate_stratified = subparsers.add_parser(
+
+def _add_evaluate_stratified_command(subparsers: _Subparsers) -> None:
+    stratified = subparsers.add_parser(
         "evaluate-stratified",
         help="Evaluate grouped, temporal, family and provider/UA holdout strata.",
     )
-    evaluate_stratified.add_argument("input", help="Detection JSONL file.")
-    evaluate_stratified.add_argument(
-        "--labels", required=True, help="Authorized local JSONL labels."
-    )
-    evaluate_stratified.add_argument(
+    stratified.add_argument("input", help="Detection JSONL file.")
+    stratified.add_argument("--labels", required=True, help="Authorized local JSONL labels.")
+    stratified.add_argument(
         "--metadata",
         required=True,
         help="Local JSONL with opaque session, declared family/provider/UA bucket and time.",
     )
-    evaluate_stratified.add_argument(
-        "--manifest", required=True, help="Authorized local corpus manifest."
-    )
-    evaluate_stratified.add_argument("--output", required=True, help="Local JSON aggregate result.")
-    evaluate_stratified.add_argument(
-        "--threshold",
-        type=_unit_interval,
-        default=0.5,
-        help="Automation decision threshold from 0 to 1 (default: 0.5).",
-    )
-    evaluate_stratified.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    stratified.add_argument("--manifest", required=True, help="Authorized local corpus manifest.")
+    stratified.add_argument("--output", required=True, help="Local JSON aggregate result.")
+    _add_threshold(stratified)
+    _add_max_line_characters(stratified)
 
-    pf2_preflight = subparsers.add_parser(
+
+def _add_pf2_preflight_command(subparsers: _Subparsers) -> None:
+    preflight = subparsers.add_parser(
         "pf2-preflight",
         help="Prepare privacy-first ATI-PF-2 session features for a local baseline.",
     )
-    pf2_preflight.add_argument("input", help="Authorized local ATI-PF-2 access-log JSONL.")
-    pf2_preflight.add_argument(
+    preflight.add_argument("input", help="Authorized local ATI-PF-2 access-log JSONL.")
+    preflight.add_argument(
         "--labels-by-session",
         required=True,
         help="Local JSON object mapping opaque session IDs to boolean targets.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--tasks-by-session",
         required=True,
         help="Local JSON object mapping opaque session IDs to audit-only task names.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--collection-windows-by-session",
         help="Optional local JSON object mapping opaque session IDs to audit-only windows.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--model-output",
         required=True,
         help="New JSONL path for target plus allowed model features only.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--split-output",
         required=True,
         help="New JSONL path for separate local session/task split metadata.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--preflight-output",
         required=True,
         help="New JSON path for aggregate readiness checks.",
     )
-    pf2_preflight.add_argument(
+    preflight.add_argument(
         "--min-sessions-per-task-class",
         type=_positive_integer,
         default=8,
         help="Required complete sessions per task and class (default: 8).",
     )
-    pf2_preflight.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(preflight)
 
-    pf2_baseline = subparsers.add_parser(
+
+def _add_pf2_baseline_command(subparsers: _Subparsers) -> None:
+    baseline = subparsers.add_parser(
         "pf2-baseline",
         help="Run the ATI-PF-2 constant-prevalence and regularized-logistic baseline ladder.",
     )
-    pf2_baseline.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
-    pf2_baseline.add_argument(
+    baseline.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
+    baseline.add_argument(
         "--split-manifest",
         required=True,
         help="Local ATI-PF-2 preflight split JSONL; used only to build partitions.",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--output",
         required=True,
         help="New JSON path for the ladder report, firewall assertions and verdict.",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--l2",
         type=_positive_float,
         default=1.0,
         help="L2 penalty strength for the logistic baseline (default: 1.0).",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--target-false-positive-rate",
         type=_unit_interval,
         help="Predeclared operating point; the threshold is chosen on the train partition.",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--resamples",
         type=_positive_integer,
         default=1000,
         help="Session-cluster bootstrap resamples per reported metric (default: 1000).",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--grouped-holdout-fraction",
         type=_open_unit_interval,
         default=0.25,
         help="Share of opaque sessions held out by the grouped split (default: 0.25).",
     )
-    pf2_baseline.add_argument(
+    baseline.add_argument(
         "--seed",
         type=int,
         default=0,
         help="Deterministic seed for the grouped split and resampling (default: 0).",
     )
-    pf2_baseline.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(baseline)
 
-    pf2_export = subparsers.add_parser(
+
+def _add_pf2_export_command(subparsers: _Subparsers) -> None:
+    export = subparsers.add_parser(
         "pf2-export-bigquery",
         help="Write privacy-safe aggregate warehouse tables from one PF-2 baseline run.",
     )
-    pf2_export.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
-    pf2_export.add_argument(
-        "--report", required=True, help="Local ATI-PF-2 baseline report JSON."
-    )
-    pf2_export.add_argument(
+    export.add_argument("model", help="Local ATI-PF-2 preflight model-table JSONL.")
+    export.add_argument("--report", required=True, help="Local ATI-PF-2 baseline report JSON.")
+    export.add_argument(
         "--output-dir", required=True, help="New local directory for export artifacts."
     )
-    pf2_export.add_argument("--run-id", required=True, help="Non-sensitive run identifier.")
-    pf2_export.add_argument(
+    export.add_argument("--run-id", required=True, help="Non-sensitive run identifier.")
+    export.add_argument(
         "--corpus-id", required=True, help="Approved non-sensitive corpus identifier."
     )
-    pf2_export.add_argument(
+    export.add_argument(
         "--dataset", required=True, help="Target BigQuery dataset name for the DDL."
     )
-    pf2_export.add_argument("--project", help="Optional BigQuery project for the DDL.")
-    pf2_export.add_argument(
+    export.add_argument("--project", help="Optional BigQuery project for the DDL.")
+    export.add_argument(
         "--exported-at",
         help="Optional ISO 8601 export timestamp; defaults to the current UTC time.",
     )
-    pf2_export.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(export)
 
+
+def _add_campaign_command(subparsers: _Subparsers) -> None:
     campaign = subparsers.add_parser(
         "campaign",
         help="Create privacy-safe ground-truth labels from controlled traffic.",
     )
     campaign_sub = campaign.add_subparsers(dest="campaign_command", required=True)
-    campaign_labels = campaign_sub.add_parser(
+
+    labels = campaign_sub.add_parser(
         "labels",
         help="Generate labels for records carrying one allowlisted campaign marker.",
     )
-    campaign_labels.add_argument("input", help="JSONL access-log path.")
-    campaign_labels.add_argument(
+    labels.add_argument("input", help="JSONL access-log path.")
+    labels.add_argument(
         "--campaign-id",
         required=True,
         help="Opaque value expected only in the ati_campaign_id log field.",
     )
-    campaign_labels.add_argument(
+    labels.add_argument(
         "--corpus-id",
         required=True,
         help="Authorized corpus identifier written to generated labels.",
     )
-    campaign_labels.add_argument("--output", required=True, help="Write labels JSONL to this path.")
-    campaign_labels.add_argument(
+    labels.add_argument("--output", required=True, help="Write labels JSONL to this path.")
+    labels.add_argument(
         "--source", default="jsonl", help="Source adapter label used to derive request IDs."
     )
-    campaign_labels.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
-    campaign_labels.add_argument(
+    _add_max_line_characters(labels)
+    labels.add_argument(
         "--hash-key-env",
         default="ATI_HASH_KEY",
         help="Environment variable containing the client pseudonymization key.",
     )
-    campaign_plan = campaign_sub.add_parser(
+
+    plan = campaign_sub.add_parser(
         "plan",
         help="Write a privacy-safe navigation campaign plan without secrets.",
     )
-    campaign_plan.add_argument("--campaign-id", required=True, help="Opaque allowlisted marker.")
-    campaign_plan.add_argument(
-        "--corpus-id", required=True, help="Authorized local corpus identifier."
-    )
-    campaign_plan.add_argument(
+    plan.add_argument("--campaign-id", required=True, help="Opaque allowlisted marker.")
+    plan.add_argument("--corpus-id", required=True, help="Authorized local corpus identifier.")
+    plan.add_argument(
         "--family",
         action="append",
         required=True,
         help="Runtime family as name=expected-user-agent-token; repeat for each family.",
     )
-    campaign_plan.add_argument(
+    plan.add_argument(
         "--sessions-per-family",
         type=_positive_integer,
         required=True,
         help="Planned independent sessions for each runtime family.",
     )
-    campaign_plan.add_argument("--output", required=True, help="New local JSON plan path.")
+    plan.add_argument("--output", required=True, help="New local JSON plan path.")
+
     runtime_validate = campaign_sub.add_parser(
         "runtime-validate",
         help="Summarize declared campaign runtime compatibility from privacy-safe JSONL.",
@@ -361,17 +362,16 @@ def _parser() -> argparse.ArgumentParser:
         help="Expected non-sensitive User-Agent token for this declared runtime.",
     )
     runtime_validate.add_argument("--output", required=True, help="Local JSON summary path.")
-    runtime_validate.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(runtime_validate)
 
+
+def _add_registry_command(subparsers: _Subparsers) -> None:
     registry = subparsers.add_parser("registry", help="Inspect the curated agent registry.")
     registry_sub = registry.add_subparsers(dest="registry_command", required=True)
     registry_sub.add_parser("validate", help="Validate the packaged registry.")
 
+
+def _add_sources_command(subparsers: _Subparsers) -> None:
     sources = subparsers.add_parser("sources", help="Inspect or refresh trusted identity sources.")
     sources_sub = sources.add_subparsers(dest="sources_command", required=True)
     sources_sub.add_parser("status", help="Show cache state for configured official sources.")
@@ -382,6 +382,8 @@ def _parser() -> argparse.ArgumentParser:
     refresh.add_argument("--provider", help="Refresh only one configured provider.")
     sources_sub.add_parser("validate", help="Validate all cached source documents offline.")
 
+
+def _add_standards_command(subparsers: _Subparsers) -> None:
     standards = subparsers.add_parser(
         "standards",
         help="Inspect pinned standards and draft health.",
@@ -392,18 +394,11 @@ def _parser() -> argparse.ArgumentParser:
         help="Check pinned Internet-Draft revisions directly against Datatracker.",
     )
 
-    return parser
-
 
 def _add_analysis_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("input", help="JSONL input path, or '-' for stdin.")
     parser.add_argument("--source", default="jsonl", help="Source adapter label stored on events.")
-    parser.add_argument(
-        "--max-line-characters",
-        type=_positive_integer,
-        default=1_000_000,
-        help="Reject JSONL records longer than this many characters (default: 1000000).",
-    )
+    _add_max_line_characters(parser)
     parser.add_argument(
         "--max-clients",
         type=_positive_integer,

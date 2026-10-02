@@ -19,7 +19,7 @@ The public remote was created and the V0 source tree was published on 2026-08-14
 
 ## Repository settings to review in GitHub
 
-Source-controlled configuration cannot enable every repository-level security setting. Review [`repository-settings.md`](repository-settings.md) and enable the settings supported by the account/repository plan, especially:
+Source-controlled configuration cannot enable every repository-level security setting. Review [`repository-settings.md`](../repository-settings.md) and enable the settings supported by the account/repository plan, especially:
 
 - secret scanning and push protection;
 - Dependabot alerts and security updates;
