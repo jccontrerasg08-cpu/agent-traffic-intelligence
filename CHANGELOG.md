@@ -23,6 +23,7 @@ All notable changes will be documented here.
 
 ### Changed
 
+- ATI-PF-2 gains a tempo-shape feature family (two scale-free ratios of the session's pauses), optional participant-grouped splits that keep each person on one side of every holdout, and `ati pf2-simulate`, a power analysis on synthetic fixtures for planning recruitment. A boosted-stumps rung was evaluated and not adopted, because it did worse than the logistic rung. Evidence: `docs/architecture/pf2-model-improvement-evidence.md`.
 - Web Bot Auth is pinned to the IETF working-group draft `draft-ietf-webbotauth-httpsig-protocol-00` (adopted 2026-09-01), which also absorbs the HTTP Message Signatures Directory draft. The review is recorded in `docs/standards-status.md`, and the draft's Appendix E.2 test vectors run against the real verifier.
 - `evaluation` is a package: metrics in `evaluation.metrics`, campaign planning in `evaluation.campaign`, and the ATI-PF-2 protocol, baseline and export in `evaluation.pf2`. The public `evaluation` surface is unchanged, and `campaign_protocol` and `pf2_protocol` remain as compatibility facades. Evaluation tests moved from `tests/research` to `tests/evaluation`, so `make test-evaluation` now covers the whole area and `make test-research` covers research contracts only.
 - The CLI parser, the warehouse export and the baseline ladder are split into named single-purpose functions. Behaviour is unchanged: the parser tree, a baseline report and an export are byte-identical before and after.

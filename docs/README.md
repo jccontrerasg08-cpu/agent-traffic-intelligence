@@ -72,6 +72,9 @@ Dated records of what was run and observed against real infrastructure. They sta
 was measured and, separately, what was **not** established.
 
 - [ATI-PF-2 live collection and baseline](architecture/pf2-live-collection-evidence.md)
+- [ATI-PF-2 model improvement](architecture/pf2-model-improvement-evidence.md)
+  *(synthetic fixtures, not traffic)*: why the features could not see the behaviour, the tempo-shape and participant-grouping
+  changes, why a more complex model did not help, and how many people to recruit.
 - [Worker → Railway perimeter verification *(es)*](architecture/worker-railway-perimeter-verification.md)
 - [Controlled observation verification *(es)*](architecture/controlled-observation-verification.md)
 - [Extended observation evidence map *(es)*](architecture/extended-observation-evidence-map.md)
