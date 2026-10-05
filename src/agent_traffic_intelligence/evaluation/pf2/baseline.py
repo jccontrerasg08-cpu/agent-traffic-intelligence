@@ -22,7 +22,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from agent_traffic_intelligence.evaluation.metrics import expected_calibration_error, pr_auc
@@ -33,7 +33,7 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
     pf2_feature_names,
 )
 
-_SPLIT_FIELDS = frozenset({"row_index", "session_id", "task", "collection_window"})
+_SPLIT_FIELDS = frozenset({"row_index", "session_id", "task", "collection_window", "group"})
 _CONSTANT_MODEL = "constant_prevalence"
 _LOGISTIC_MODEL = "l2_logistic_regression"
 _INTERVAL_METRICS = ("recall", "false_positive_rate", "pr_auc", "brier_score")
@@ -119,9 +119,18 @@ def _validate_model_rows(rows: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
     return feature_names
 
 
+@dataclass(frozen=True, slots=True)
+class _SplitMetadata:
+    """Audit-only labels per model-table row, used to build partitions and nothing else."""
+
+    tasks: dict[int, str]
+    windows: dict[int, str | None]
+    groups: dict[int, str] | None
+
+
 def _validate_split_rows(
     split_rows: Sequence[Mapping[str, Any]], *, row_count: int
-) -> tuple[dict[int, str], dict[int, str], dict[int, str | None]]:
+) -> _SplitMetadata:
     """Reject split metadata that cannot support a leakage-controlled partition."""
 
     if len(split_rows) != row_count:
@@ -129,6 +138,7 @@ def _validate_split_rows(
     sessions: dict[int, str] = {}
     tasks: dict[int, str] = {}
     windows: dict[int, str | None] = {}
+    groups: dict[int, str] = {}
     seen_sessions: set[str] = set()
     for row in split_rows:
         prohibited = sorted(set(row) - _SPLIT_FIELDS)
@@ -156,23 +166,35 @@ def _validate_split_rows(
             raise PF2BaselineError(
                 "split manifest collection_window must be a non-empty audit label"
             )
+        group = row.get("group")
+        if group is not None:
+            if not isinstance(group, str) or not group.strip():
+                raise PF2BaselineError("split manifest group must be a non-empty audit label")
+            groups[row_index] = group
         sessions[row_index] = session_id
         tasks[row_index] = task
         windows[row_index] = window
-    return sessions, tasks, windows
+    if groups and len(groups) != row_count:
+        raise PF2BaselineError("split manifest must give a group for every row or for none")
+    return _SplitMetadata(tasks=tasks, windows=windows, groups=groups or None)
 
 
 def build_pf2_splits(
     tasks: Mapping[int, str],
     windows: Mapping[int, str | None],
     *,
+    groups: Mapping[int, str] | None = None,
     grouped_holdout_fraction: float = 0.25,
     seed: int = 0,
 ) -> tuple[PF2Split, ...]:
-    """Build forward-chained temporal, leave-one-task-out and grouped session holdouts.
+    """Build forward-chained temporal, leave-one-task-out and grouped holdouts.
 
     Temporal splits never train on a later collection window, so the earliest window is
     never a holdout. The last window in sorted order is the final temporal holdout.
+
+    With ``groups`` (who produced each session), the grouped holdout sets aside whole
+    groups, and every split drops from training any session whose group also appears in
+    its holdout. A model then never scores a person whose own sessions it was fitted on.
     """
 
     if not 0.0 < grouped_holdout_fraction < 1.0:
@@ -210,21 +232,50 @@ def build_pf2_splits(
             )
         )
 
+    splits.append(_grouped_holdout(tasks, groups, grouped_holdout_fraction, seed))
+    if groups is None:
+        return tuple(splits)
+    return tuple(_purge_shared_groups(split, groups) for split in splits)
+
+
+def _grouped_holdout(
+    tasks: Mapping[int, str],
+    groups: Mapping[int, str] | None,
+    fraction: float,
+    seed: int,
+) -> PF2Split:
+    """Hold out a random share of sessions, or of whole groups when groups are known."""
+
     ordered_rows = sorted(tasks)
-    shuffled = list(ordered_rows)
-    random.Random(seed).shuffle(shuffled)
-    holdout_size = max(1, round(len(shuffled) * grouped_holdout_fraction))
-    holdout_rows = tuple(sorted(shuffled[:holdout_size]))
-    train_rows = tuple(sorted(shuffled[holdout_size:]))
-    splits.append(
-        PF2Split(
-            name="grouped_session:holdout",
-            kind="grouped_session",
-            train_rows=train_rows,
-            holdout_rows=holdout_rows,
-        )
+    target_size = max(1, round(len(ordered_rows) * fraction))
+    if groups is None:
+        shuffled = list(ordered_rows)
+        random.Random(seed).shuffle(shuffled)
+        holdout = set(shuffled[:target_size])
+        name, kind = "grouped_session:holdout", "grouped_session"
+    else:
+        names = sorted(set(groups.values()))
+        random.Random(seed).shuffle(names)
+        chosen: set[str] = set()
+        for group in names:
+            if sum(groups[row] in chosen for row in ordered_rows) >= target_size:
+                break
+            chosen.add(group)
+        holdout = {row for row in ordered_rows if groups[row] in chosen}
+        name, kind = "grouped_participant:holdout", "grouped_participant"
+    return PF2Split(
+        name=name,
+        kind=kind,
+        train_rows=tuple(row for row in ordered_rows if row not in holdout),
+        holdout_rows=tuple(sorted(holdout)),
     )
-    return tuple(splits)
+
+
+def _purge_shared_groups(split: PF2Split, groups: Mapping[int, str]) -> PF2Split:
+    held_out = {groups[row] for row in split.holdout_rows}
+    return replace(
+        split, train_rows=tuple(row for row in split.train_rows if groups[row] not in held_out)
+    )
 
 
 def _solve(matrix: list[list[float]], vector: list[float]) -> list[float]:
@@ -581,15 +632,16 @@ def evaluate_pf2_baseline(
     rows = [dict(row) for row in model_rows]
     feature_names = _validate_model_rows(rows)
     manifest = [dict(row) for row in split_rows]
-    _, tasks, windows = _validate_split_rows(manifest, row_count=len(rows))
+    metadata = _validate_split_rows(manifest, row_count=len(rows))
 
-    all_targets = _targets(rows, sorted(tasks))
+    all_targets = _targets(rows, sorted(metadata.tasks))
     if len(set(all_targets)) < 2:
         raise PF2BaselineError("model table must contain both classes")
 
     splits = build_pf2_splits(
-        tasks,
-        windows,
+        metadata.tasks,
+        metadata.windows,
+        groups=metadata.groups,
         grouped_holdout_fraction=grouped_holdout_fraction,
         seed=seed,
     )
@@ -626,12 +678,18 @@ def evaluate_pf2_baseline(
             "train_holdout_session_overlap_count": 0,
             "split_metadata_reached_estimator": False,
             "single_class_split_count": single_class_split_count,
+            # With groups, no holdout scores a group whose sessions the model was fitted on.
+            "split_grouping": "group" if metadata.groups is not None else "session",
+            "group_count": len(set(metadata.groups.values()))
+            if metadata.groups is not None
+            else len(rows),
         },
         "feature_inventory": _feature_inventory(rows, feature_names),
         "cohorts": {
-            "task": _cohort_counts(tasks, rows),
+            "task": _cohort_counts(metadata.tasks, rows),
             "collection_window": _cohort_counts(
-                {row: window for row, window in windows.items() if window is not None}, rows
+                {row: window for row, window in metadata.windows.items() if window is not None},
+                rows,
             ),
         },
         "splits": split_reports,

@@ -17,10 +17,13 @@ and is worthless.
 The ATI-PF-2 pipeline keeps model inputs and evaluation metadata in **two separate files
 that never merge**:
 
-- the *model table* holds the boolean target and the 67 permitted session features, from
-  four declared families, and nothing else. Any other column fails the run;
-- the *split manifest* holds the opaque session pseudonym, task and collection window. It is
-  read only to build train/holdout partitions.
+- the *model table* holds the boolean target and the permitted session features, from the
+  declared families, and nothing else (67 features in four families at adoption; 69 in five
+  since the laboratory's feature contract 1.1 added tempo shape). Any other column fails
+  the run;
+- the *split manifest* holds the opaque session pseudonym, task, collection window and,
+  when one source produced several sessions, an opaque group such as a participant code.
+  It is read only to build train/holdout partitions.
 
 Every learned quantity (standardization statistics, coefficients, and the operating threshold
 for a predeclared false-positive rate) is derived from the training partition of each split.

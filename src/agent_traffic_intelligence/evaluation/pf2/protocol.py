@@ -8,6 +8,7 @@ and task assignment are deliberately unavailable to the model.
 
 from __future__ import annotations
 
+import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -72,6 +73,7 @@ PF2_FEATURE_FAMILIES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "status_4xx_count",
         ),
         "coarsened_tempo": ("session_duration_bucket", *_DELAY_BIN_NAMES),
+        "tempo_shape": ("delay_dispersion_bucket", "delay_tail_bucket"),
     }
 )
 """Permitted feature families from the controlled-corpus feature contract."""
@@ -159,6 +161,36 @@ def _duration_bucket(duration_seconds: float) -> int:
     return 3
 
 
+# Upper bounds of the lower buckets; a value at or above the last bound is the top bucket.
+_DISPERSION_BOUNDS = (0.15, 0.3, 0.6)
+_TAIL_BOUNDS = (1.5, 2.5, 4.0)
+
+
+def _bucket(value: float, bounds: tuple[float, ...]) -> int:
+    return next((index for index, bound in enumerate(bounds) if value < bound), len(bounds))
+
+
+def _tempo_shape(delays: list[float]) -> tuple[int, int]:
+    """Bucket how irregular a session's pauses are, independently of their length.
+
+    Both measures are ratios, so a pacing regime that only rescales the pauses leaves
+    them unchanged: the coefficient of variation of the pauses, and the longest pause
+    over the median one. A timer drawing uniformly from one range keeps both low; a
+    person choosing each pause tends not to. A session with fewer than two pauses, or
+    with no measurable pause, falls in the lowest bucket of each.
+    """
+
+    if len(delays) < 2:
+        return 0, 0
+    mean = sum(delays) / len(delays)
+    median = statistics.median(delays)
+    if mean <= 0 or median <= 0:
+        return 0, 0
+    dispersion = statistics.pstdev(delays) / mean
+    tail = max(delays) / median
+    return _bucket(dispersion, _DISPERSION_BOUNDS), _bucket(tail, _TAIL_BOUNDS)
+
+
 def _empty_feature_row() -> dict[str, int | bool]:
     row: dict[str, int | bool] = dict.fromkeys(pf2_feature_names(), 0)
     row["completion"] = False
@@ -183,8 +215,13 @@ def _session_features(
     for previous, current in pairwise(categories):
         row[f"transition_{previous}_to_{current}_count"] += 1
     timestamps = [observed_at for _, _, _, observed_at in ordered]
-    for previous_time, current_time in pairwise(timestamps):
-        row[_delay_bin_name(max(0.0, (current_time - previous_time).total_seconds()))] += 1
+    delays = [
+        max(0.0, (current_time - previous_time).total_seconds())
+        for previous_time, current_time in pairwise(timestamps)
+    ]
+    for delay in delays:
+        row[_delay_bin_name(delay)] += 1
+    row["delay_dispersion_bucket"], row["delay_tail_bucket"] = _tempo_shape(delays)
     row["session_duration_bucket"] = _duration_bucket(
         max(0.0, (timestamps[-1] - timestamps[0]).total_seconds())
     )
@@ -213,6 +250,7 @@ def prepare_pf2_dataset(
     labels_by_session: Mapping[str, bool],
     task_by_session: Mapping[str, str],
     collection_window_by_session: Mapping[str, str] | None = None,
+    group_by_session: Mapping[str, str] | None = None,
     min_sessions_per_task_class: int = 8,
 ) -> PF2PreparedDataset:
     """Prepare fixed-width, session-level model rows and fail closed on coverage gaps.
@@ -220,6 +258,10 @@ def prepare_pf2_dataset(
     The returned rows contain only target and predeclared coarse features. Opaque group
     identities and task assignment remain solely in the caller's separate split manifest.
     Exact timestamps are binned in memory and discarded.
+
+    ``group_by_session`` names who produced each session when one source produced several,
+    such as a consenting participant's opaque code. It reaches only the split manifest, so
+    the baseline can keep one person's sessions on one side of every split.
     """
 
     if min_sessions_per_task_class < 1:
@@ -237,6 +279,14 @@ def prepare_pf2_dataset(
             raise PF2ProtocolError(
                 "collection_window_by_session values must be non-empty audit labels"
             )
+    if group_by_session is not None:
+        if set(group_by_session) != set(labels_by_session):
+            raise PF2ProtocolError("group_by_session must cover the same sessions as labels")
+        if any(
+            not isinstance(group, str) or not group.strip()
+            for group in group_by_session.values()
+        ):
+            raise PF2ProtocolError("group_by_session values must be non-empty audit labels")
     grouped: dict[str, list[tuple[str, str, int, datetime]]] = defaultdict(list)
     for record in records:
         session_id, category, method, status, observed_at = _parse_record(record)
@@ -283,6 +333,7 @@ def prepare_pf2_dataset(
                 if collection_window_by_session is not None
                 else {}
             ),
+            **({"group": group_by_session[session_id]} if group_by_session is not None else {}),
         }
         for row_index, session_id in enumerate(ordered_session_ids)
     )
@@ -306,6 +357,7 @@ def prepare_pf2_dataset(
         "varying_feature_count": varying_feature_count,
         "task_count": len(coverage),
         "collection_window_count": len(window_coverage),
+        "group_count": len(set(group_by_session.values())) if group_by_session else len(grouped),
         "automated_session_count": sum(labels_by_session.values()),
         "human_assisted_session_count": sum(not value for value in labels_by_session.values()),
     }

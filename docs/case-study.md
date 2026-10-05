@@ -76,7 +76,7 @@ work. Four things went wrong or nearly did, and each one became a structural gua
 **1. Metadata that predicts the label.** Session pseudonyms, tasks and collection windows
 predict the label perfectly if they reach the model. They now live in a separate split
 manifest that is only ever used to build partitions, and the model table is rejected if it
-carries any column outside 67 permitted features
+carries any column outside the 69 permitted features
 ([ADR 0007](adr/0007-pf2-feature-firewall.md)).
 
 **2. A protocol that could not produce a valid corpus.** Re-reading the human-consent
