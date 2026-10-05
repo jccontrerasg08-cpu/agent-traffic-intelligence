@@ -572,3 +572,60 @@ def test_arbitrary_valid_corpora_keep_splits_disjoint_and_leak_nothing(
             assert 0.0 <= model["recall"] <= 1.0
             if model["pr_auc"] is not None:
                 assert 0.0 <= model["pr_auc"] <= 1.0
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    row_count=st.integers(min_value=4, max_value=40),
+    group_count=st.integers(min_value=2, max_value=8),
+    seed=st.integers(min_value=0, max_value=2**16),
+)
+def test_no_split_scores_a_group_it_was_trained_on(
+    row_count: int, group_count: int, seed: int
+) -> None:
+    generator = random.Random(seed)
+    tasks = {row: f"task-{row % 2}" for row in range(row_count)}
+    windows: dict[int, str | None] = {row: f"w{row % 3}" for row in range(row_count)}
+    groups = {row: f"p{generator.randrange(group_count):02d}" for row in range(row_count)}
+
+    for split in build_pf2_splits(tasks, windows, groups=groups, seed=seed):
+        trained = {groups[row] for row in split.train_rows}
+        scored = {groups[row] for row in split.holdout_rows}
+        assert not trained & scored, split.name
+
+
+def test_grouped_holdout_sets_aside_whole_participants() -> None:
+    tasks = dict.fromkeys(range(12), "t")
+    windows: dict[int, str | None] = dict.fromkeys(range(12), "w1")
+    # Three people with four sessions each.
+    groups = {row: f"p{row // 4:02d}" for row in range(12)}
+
+    grouped = next(
+        split
+        for split in build_pf2_splits(tasks, windows, groups=groups, seed=4)
+        if split.kind == "grouped_participant"
+    )
+
+    held_out = {groups[row] for row in grouped.holdout_rows}
+    assert len(grouped.holdout_rows) == 4 * len(held_out)
+    assert not held_out & {groups[row] for row in grouped.train_rows}
+
+
+def test_report_records_how_holdouts_were_grouped() -> None:
+    model_rows, split_rows = _corpus(sessions_per_cell=6)
+    for row in split_rows:
+        row["group"] = f"g{int(row['row_index']) % 12:02d}"
+
+    report = evaluate_pf2_baseline(model_rows, split_rows, resamples=16, seed=1).to_dict()
+
+    assert report["firewall"]["split_grouping"] == "group"
+    assert report["firewall"]["group_count"] == 12
+    assert any(split["kind"] == "grouped_participant" for split in report["splits"])
+
+
+def test_a_partial_group_column_fails_closed() -> None:
+    model_rows, split_rows = _corpus(sessions_per_cell=2)
+    split_rows[0]["group"] = "p01"
+
+    with pytest.raises(PF2BaselineError, match="every row or for none"):
+        evaluate_pf2_baseline(model_rows, split_rows, resamples=8)

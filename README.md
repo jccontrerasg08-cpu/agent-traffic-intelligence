@@ -17,7 +17,7 @@ Self-hosted, explainable intelligence for automated and AI-originated web traffi
 | **What** | Classifies web traffic along four independent axes (automation, AI-relatedness, verified identity, risk), explains every score with evidence, and never acts on traffic. |
 | **Why it is hard** | The labels that make evaluation possible also leak the answer. Most of the engineering goes into making the evaluation impossible to flatter. |
 | **Stack** | Python 3.11 standard library only (cryptography optional), `mypy --strict`, Hypothesis; a FastAPI origin on Railway behind a Cloudflare Worker in the companion [observation laboratory](https://github.com/jccontrerasg08-cpu/ati-observation-lab); BigQuery for run results. |
-| **Evidence** | 484 tests with an 85% coverage gate; 22/22 live perimeter checks in production; a 24-session live campaign through the real edge. |
+| **Evidence** | 506 tests with an 85% coverage gate; 22/22 live perimeter checks in production; a 24-session live campaign through the real edge. |
 | **Read next** | [Case study](docs/case-study.md) · [Engineering principles in practice](docs/engineering-principles.md) · [Documentation map](docs/README.md) · [Decision records](docs/README.md#decisions) |
 
 ## Why this exists
@@ -321,8 +321,19 @@ The evaluator reports coverage, confusion-matrix metrics, and Brier score. It do
 For an authorized controlled-lab corpus, `ati pf2-preflight` builds a privacy-first
 session table behind the ATI-PF-2 feature firewall, `ati pf2-baseline` runs the
 constant-prevalence and regularized-logistic ladder over forward-chained temporal,
-leave-one-task-out and grouped-session holdouts, and `ati pf2-export-bigquery` prepares
-aggregate warehouse tables without uploading anything.
+leave-one-task-out and grouped holdouts, and `ati pf2-export-bigquery` prepares
+aggregate warehouse tables without uploading anything. With `--groups-by-session`, holdouts
+are grouped by participant, so a model is never scored on a person it was trained on.
+
+`ati pf2-simulate` plans a collection before anyone is recruited: on synthetic matched
+corpora with person-to-person variation, it reports how often the ladder detects a given
+difference at each corpus size. Its first result is a recruitment target of 12 participants
+with 3 sessions each ([model improvement evidence](docs/architecture/pf2-model-improvement-evidence.md)).
+
+```bash
+ati pf2-simulate --human-model lognormal --sessions-per-cell 1 2 4 --participants 12 \
+  --output plan.json
+```
 
 ```bash
 ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \

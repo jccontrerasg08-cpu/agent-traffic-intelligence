@@ -40,6 +40,7 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2ProtocolError,
     prepare_pf2_dataset,
 )
+from agent_traffic_intelligence.evaluation.pf2.simulation import HumanPauseModel, plan_collection
 from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
 from agent_traffic_intelligence.identity.policy import VerificationMode
@@ -88,6 +89,7 @@ def _parser() -> argparse.ArgumentParser:
         _add_pf2_preflight_command,
         _add_pf2_baseline_command,
         _add_pf2_export_command,
+        _add_pf2_simulate_command,
         _add_campaign_command,
         _add_registry_command,
         _add_sources_command,
@@ -201,6 +203,13 @@ def _add_pf2_preflight_command(subparsers: _Subparsers) -> None:
         help="Optional local JSON object mapping opaque session IDs to audit-only windows.",
     )
     preflight.add_argument(
+        "--groups-by-session",
+        help=(
+            "Optional local JSON object mapping opaque session IDs to audit-only groups, "
+            "such as a participant code, so one source's sessions stay on one side of a split."
+        ),
+    )
+    preflight.add_argument(
         "--model-output",
         required=True,
         help="New JSONL path for target plus allowed model features only.",
@@ -270,6 +279,49 @@ def _add_pf2_baseline_command(subparsers: _Subparsers) -> None:
         help="Deterministic seed for the grouped split and resampling (default: 0).",
     )
     _add_max_line_characters(baseline)
+
+
+def _add_pf2_simulate_command(subparsers: _Subparsers) -> None:
+    simulate = subparsers.add_parser(
+        "pf2-simulate",
+        help=(
+            "Plan an ATI-PF-2 collection: how often synthetic matched corpora of each size "
+            "let the baseline ladder detect a given human pause model."
+        ),
+    )
+    simulate.add_argument(
+        "--human-model",
+        required=True,
+        choices=[model.value for model in HumanPauseModel],
+        help="How simulated people pause; 'uniform' is the null that must not be detected.",
+    )
+    simulate.add_argument(
+        "--sessions-per-cell",
+        type=_positive_integer,
+        nargs="+",
+        required=True,
+        help="Sessions per task, window, regime and cohort to try, e.g. 1 2 4.",
+    )
+    simulate.add_argument(
+        "--participants",
+        type=_positive_integer,
+        required=True,
+        help="Consenting participants; at least one per task and collection window.",
+    )
+    simulate.add_argument(
+        "--repeats",
+        type=_positive_integer,
+        default=20,
+        help="Independent synthetic corpora per size (default: 20).",
+    )
+    simulate.add_argument(
+        "--resamples",
+        type=_positive_integer,
+        default=300,
+        help="Session-cluster resamples per baseline run (default: 300).",
+    )
+    simulate.add_argument("--seed", type=int, default=0, help="Deterministic seed (default: 0).")
+    simulate.add_argument("--output", required=True, help="New JSON path for the plan.")
 
 
 def _add_pf2_export_command(subparsers: _Subparsers) -> None:
@@ -849,6 +901,24 @@ def _pf2_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pf2_simulate(args: argparse.Namespace) -> int:
+    try:
+        plan = plan_collection(
+            human_model=HumanPauseModel(args.human_model),
+            sessions_per_cell_options=args.sessions_per_cell,
+            participants=args.participants,
+            repeats=args.repeats,
+            resamples=args.resamples,
+            seed=args.seed,
+        )
+        _write_json(Path(args.output), plan)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({"output": args.output, "fixture": True}, sort_keys=True))
+    return 0
+
+
 def _pf2_export_bigquery(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir)
     try:
@@ -968,6 +1038,19 @@ def _pf2_preflight(args: argparse.Namespace) -> int:
             if args.collection_windows_by_session is not None
             else None
         )
+        groups = (
+            _load_json_object(
+                Path(args.groups_by_session),
+                kind="ATI-PF-2 group metadata",
+                max_characters=args.max_line_characters,
+            )
+            if args.groups_by_session is not None
+            else None
+        )
+        if groups is not None and any(
+            not isinstance(group, str) for group in groups.values()
+        ):
+            raise EvaluationError("ATI-PF-2 group metadata must map session strings to strings")
         if any(
             not isinstance(session_id, str) or not isinstance(automated, bool)
             for session_id, automated in labels.items()
@@ -1013,6 +1096,11 @@ def _pf2_preflight(args: argparse.Namespace) -> int:
             labels_by_session=labels_by_session,
             task_by_session=task_by_session,
             collection_window_by_session=collection_window_by_session,
+            group_by_session=(
+                {session_id: str(group) for session_id, group in groups.items()}
+                if groups is not None
+                else None
+            ),
             min_sessions_per_task_class=args.min_sessions_per_task_class,
         )
         _write_jsonl(Path(args.model_output), dataset.model_rows)
@@ -1300,6 +1388,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _pf2_preflight(args)
     if args.command == "pf2-baseline":
         return _pf2_baseline(args)
+    if args.command == "pf2-simulate":
+        return _pf2_simulate(args)
     if args.command == "pf2-export-bigquery":
         return _pf2_export_bigquery(args)
     if args.command == "evaluate-stratified":

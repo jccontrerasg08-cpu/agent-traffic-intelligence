@@ -286,3 +286,100 @@ def test_pf2_preflight_blocks_baseline_without_temporal_holdout() -> None:
     )
 
     assert dataset.preflight["status"] == "blocked-no-temporal-holdout"
+
+
+def _timed_session(session_id: str, pauses: list[float]) -> list[dict[str, object]]:
+    routes = ["/lab/start", "/lab/page/landing", "/lab/page/catalog", "/lab/page/detail"]
+    paths = (routes + ["/lab/complete"] * len(pauses))[: len(pauses) + 1]
+    moment = datetime(2026, 8, 25, tzinfo=UTC)
+    records = []
+    for index, path in enumerate(paths):
+        if index:
+            moment += timedelta(seconds=pauses[index - 1])
+        records.append(
+            {
+                "session_id": session_id,
+                "request_uri": path,
+                "request_method": "GET",
+                "status": 200,
+                "time_iso8601": moment.isoformat(),
+            }
+        )
+    return records
+
+
+def _shape(pauses: list[float]) -> tuple[int, int]:
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
+
+    regular, probe = _session("a"), _session("b")
+    dataset = prepare_pf2_dataset(
+        _timed_session(regular, [10.0, 10.0, 10.0, 10.0]) + _timed_session(probe, pauses),
+        labels_by_session={regular: True, probe: False},
+        task_by_session={regular: "t", probe: "t"},
+        min_sessions_per_task_class=1,
+    )
+    row = dataset.model_rows[1]
+    return int(row["delay_dispersion_bucket"]), int(row["delay_tail_bucket"])
+
+
+def test_tempo_shape_separates_a_timer_from_irregular_pauses_of_the_same_length() -> None:
+    timer = _shape([8.0, 9.0, 8.5, 9.5])
+    person = _shape([4.0, 6.0, 5.0, 19.0])
+
+    assert timer == (0, 0)
+    assert person[0] > timer[0]
+    assert person[1] > timer[1]
+
+
+def test_tempo_shape_ignores_the_scale_of_the_pauses() -> None:
+    # The pacing regime only rescales pauses, so it must not move these buckets.
+    pauses = [5.0, 7.0, 6.0, 15.0]
+
+    assert _shape(pauses) == _shape([pause * 4 for pause in pauses])
+
+
+def test_tempo_shape_falls_to_the_lowest_buckets_without_two_measurable_pauses() -> None:
+    assert _shape([12.0]) == (0, 0)
+    assert _shape([0.0, 0.0, 0.0]) == (0, 0)
+
+
+def test_groups_reach_only_the_split_manifest() -> None:
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
+
+    first, second = _session("a"), _session("b")
+    dataset = prepare_pf2_dataset(
+        _timed_session(first, [5.0, 6.0, 7.0, 8.0]) + _timed_session(second, [5.0, 9.0, 6.0, 30.0]),
+        labels_by_session={first: True, second: False},
+        task_by_session={first: "t", second: "t"},
+        group_by_session={first: first, second: "p01"},
+        min_sessions_per_task_class=1,
+    )
+
+    assert [row["group"] for row in dataset.split_rows] == [first, "p01"]
+    assert all("group" not in row for row in dataset.model_rows)
+    assert dataset.preflight["group_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("groups", "message"),
+    [
+        ({"a": "p01"}, "cover the same sessions"),
+        ({"a": "p01", "b": " "}, "non-empty audit labels"),
+    ],
+)
+def test_incomplete_or_blank_groups_fail_closed(groups: dict[str, str], message: str) -> None:
+    from agent_traffic_intelligence.evaluation.pf2.protocol import (
+        PF2ProtocolError,
+        prepare_pf2_dataset,
+    )
+
+    first, second = _session("a"), _session("b")
+    sessions = {"a": first, "b": second}
+    with pytest.raises(PF2ProtocolError, match=message):
+        prepare_pf2_dataset(
+            _timed_session(first, [5.0, 6.0]) + _timed_session(second, [5.0, 9.0]),
+            labels_by_session={first: True, second: False},
+            task_by_session={first: "t", second: "t"},
+            group_by_session={sessions[key]: value for key, value in groups.items()},
+            min_sessions_per_task_class=1,
+        )

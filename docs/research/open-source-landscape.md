@@ -166,9 +166,9 @@ scale: an unmatched design scores a PR-AUC of 1.000 and means nothing
 | No separate test set | Every split has a fixed holdout. The last collection window is the final temporal holdout, and a model only counts as winning there ([`build_pf2_splits`](../../src/agent_traffic_intelligence/evaluation/pf2/baseline.py)). |
 | Pre-processing on train and test together | Standardization statistics and the operating threshold are fitted on the training partition only. |
 | Duplicates across the split | The corpus builder refuses duplicated request identifiers, and the baseline refuses a split manifest that repeats a row or a session. |
-| Illegitimate features | The feature firewall rejects any column outside the 67 permitted features. Pseudonyms, tasks and windows live in a separate manifest ([ADR 0007](../adr/0007-pf2-feature-firewall.md)). |
+| Illegitimate features | The feature firewall rejects any column outside the 69 permitted features. Pseudonyms, tasks and windows live in a separate manifest ([ADR 0007](../adr/0007-pf2-feature-firewall.md)). |
 | Temporal leakage | Temporal splits are forward-chained and never train on a later window. |
-| Non-independence between train and test | Holdouts are grouped by session and by task, and confidence intervals resample whole sessions. |
+| Non-independence between train and test | Holdouts are grouped by task and by participant, and every split drops from training the sessions of anyone it holds out, so no model is scored on a person it was fitted on. Confidence intervals resample whole sessions. |
 | Sampling bias in the test distribution | The matched-executor design, and the corpus builder's refusal of any executor, pacing, scenario or catalogue version that occurs in one class only. What remains unknown, generalization to unmarked public traffic, is stated as not established. |
 
 ## What this review changed

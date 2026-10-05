@@ -714,6 +714,49 @@ def test_pf2_baseline_reports_the_ladder_for_a_ready_corpus(tmp_path, capsys) ->
     assert "hmac-sha256:" not in output_path.read_text()
 
 
+def test_pf2_preflight_carries_groups_into_the_split_manifest_only(tmp_path, capsys) -> None:
+    access_path = tmp_path / "access.jsonl"
+    labels, tasks, windows = write_pf2_corpus(access_path)
+    # Human sessions come from four participants; automated ones stand alone.
+    humans = sorted(session for session, automated in labels.items() if not automated)
+    groups = {session: session for session, automated in labels.items() if automated}
+    groups |= {session: f"p{index % 4:02d}" for index, session in enumerate(humans)}
+    paths = {}
+    payloads = {"labels": labels, "tasks": tasks, "windows": windows, "groups": groups}
+    for name, payload in payloads.items():
+        paths[name] = tmp_path / f"{name}.json"
+        paths[name].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    model_path, split_path = tmp_path / "model.jsonl", tmp_path / "splits.jsonl"
+
+    code = main(
+        [
+            "pf2-preflight",
+            str(access_path),
+            "--labels-by-session",
+            str(paths["labels"]),
+            "--tasks-by-session",
+            str(paths["tasks"]),
+            "--collection-windows-by-session",
+            str(paths["windows"]),
+            "--groups-by-session",
+            str(paths["groups"]),
+            "--model-output",
+            str(model_path),
+            "--split-output",
+            str(split_path),
+            "--preflight-output",
+            str(tmp_path / "preflight.json"),
+            "--min-sessions-per-task-class",
+            "4",
+        ]
+    )
+
+    assert code == 0
+    split_rows = [json.loads(line) for line in split_path.read_text().splitlines()]
+    assert {row["group"] for row in split_rows} >= {"p00", "p01", "p02", "p03"}
+    assert "p00" not in model_path.read_text()
+
+
 def test_pf2_baseline_rejects_a_prohibited_model_column(tmp_path, capsys) -> None:
     model_path, split_path = run_pf2_preflight(tmp_path)
     capsys.readouterr()

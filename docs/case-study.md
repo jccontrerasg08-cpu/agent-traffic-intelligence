@@ -71,12 +71,12 @@ executor and ATI to it, so they cannot drift apart.
 ## The hard part: not fooling yourself
 
 Building a classifier is easy. Building an evaluation that cannot flatter it is the actual
-work. Four things went wrong or nearly did, and each one became a structural guard.
+work. Five things went wrong or nearly did, and each one became a structural guard.
 
 **1. Metadata that predicts the label.** Session pseudonyms, tasks and collection windows
 predict the label perfectly if they reach the model. They now live in a separate split
 manifest that is only ever used to build partitions, and the model table is rejected if it
-carries any column outside 67 permitted features
+carries any column outside the 69 permitted features
 ([ADR 0007](adr/0007-pf2-feature-firewall.md)).
 
 **2. A protocol that could not produce a valid corpus.** Re-reading the human-consent
@@ -104,6 +104,17 @@ shows why the design matters more than the model:
 The unmatched result looks perfect and is worthless. On the matched fixture the ladder
 correctly declines to claim a win, because the session-cluster bootstrap lower bound does
 not clear the constant baseline.
+
+**5. Features that could not see the behaviour.** The matched result also had a cause.
+Both cohorts share each pacing regime, and the tempo features binned pauses on absolute
+boundaries, so every pause of a regime fell in one bin whoever chose it. More data could
+not help: with those features, detection stayed near zero up to 288 synthetic sessions. Two
+scale-free ratios of the pauses fixed it. With them, the ladder detects the modelled human
+difference in 90–95% of simulated collections of 72 sessions from 12 people, and never
+claims one against a null. A boosted-tree model was tried and did worse, so the ladder
+kept the simpler logistic. Splits now also hold out whole participants, and a power analysis sets
+the recruitment target at 12 people with 3 sessions each
+([evidence](architecture/pf2-model-improvement-evidence.md)).
 
 ## Running it against real infrastructure
 
@@ -150,7 +161,7 @@ not clear the constant baseline.
 
 ## Engineering practice
 
-- Python 3.11+, `mypy --strict`, `ruff`. 484 tests in ATI with an 85% coverage gate; 110
+- Python 3.11+, `mypy --strict`, `ruff`. 506 tests in ATI with an 85% coverage gate; 110
   Python and 23 Worker tests in the laboratory. Property-based tests (Hypothesis) for the
   parser, the IP-range logic and the evaluation splits.
 - CI installs hash-pinned dependencies and runs per-area test profiles, CodeQL, OpenSSF Scorecard, dependency review and a
