@@ -6,6 +6,19 @@ ATI keeps external identity-source refresh separate from deterministic request a
 - `hybrid`: use a fresh cache plus provider-documented DNS verification where configured; source refresh remains explicit.
 - `live`: currently has the same verifier availability as `hybrid`; source downloads remain an explicit `ati sources refresh` operation.
 
+## Freshness
+
+How long a cached source may verify requests depends on what it is
+([ADR 0009](adr/0009-range-snapshot-validity.md)):
+
+- **IP-range lists** verify requests for 7 days after retrieval, whatever their HTTP
+  headers say. Providers serve them with `max-age=0` or no freshness at all, so HTTP
+  caching cannot answer this. A `304` revalidation renews the period.
+- **Key directories** follow HTTP `max-age`, which is how a signer announces key rotation.
+
+A source past its period yields a neutral `stale` outcome, never an identity failure.
+Refresh at least weekly when analysing current traffic.
+
 ## Commands
 
 Inspect configured source state:

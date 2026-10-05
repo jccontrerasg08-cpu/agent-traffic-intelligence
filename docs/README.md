@@ -26,6 +26,7 @@ Architecture decision records: one decision, its context and its consequences ea
 | [0006](adr/0006-provider-agent-binding-scope.md) | Provider and agent binding are separate |
 | [0007](adr/0007-pf2-feature-firewall.md) | The PF-2 feature firewall: split metadata never reaches the estimator |
 | [0008](adr/0008-aggregate-only-warehouse-export.md) | The warehouse receives aggregates only |
+| [0009](adr/0009-range-snapshot-validity.md) | A range snapshot vouches for a fixed period, not for its HTTP freshness |
 
 ## Architecture and contracts
 

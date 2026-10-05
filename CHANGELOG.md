@@ -36,6 +36,7 @@ All notable changes will be documented here.
 
 ### Fixed
 
+- Official IP-range verification for OpenAI never passed: its lists are served with `max-age=0`, so every refreshed snapshot was stale on arrival. Google and Perplexity lists had the opposite problem and never expired. A range snapshot now verifies requests for 7 days after retrieval, regardless of HTTP headers (ADR 0009).
 - A Web Bot Auth signature is no longer attributed to a `Signature-Agent` member that belongs to another signer. It binds to the member under its own label, or to the single member it covers, as the working-group draft requires.
 - RFC 9421 `created` and `expires` are judged at the request's time rather than the wall clock, so analysing a log older than the validity window no longer rejects every valid signature.
 - Key-directory refresh no longer follows redirects or accepts a status other than 200 (or a 304 revalidation), per the draft's discovery rule.
