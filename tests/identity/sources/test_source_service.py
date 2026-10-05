@@ -18,8 +18,10 @@ from agent_traffic_intelligence.identity.crypto.signature_agent import (
 )
 from agent_traffic_intelligence.identity.models import BindingScope
 from agent_traffic_intelligence.identity.source_service import (
+    RANGE_SNAPSHOT_VALIDITY,
     SourceSpec,
     _document_from_result,
+    _expires_at,
     refresh_sources,
     source_status,
     validate_sources,
@@ -230,7 +232,6 @@ def test_fetch_result_converts_to_cacheable_source_document() -> None:
     assert document.metadata.etag == '"v2"'
     assert document.metadata.source_created_at == SOURCE_CREATED_AT
     assert document.metadata.expires_at is not None
-    assert document.metadata.expires_at - document.metadata.retrieved_at == timedelta(hours=1)
     assert document.metadata.acquisition.value == "direct_https"
     assert document.content == result.body
 
@@ -245,11 +246,31 @@ def test_redirected_fetch_is_cached_under_configured_authority_uri() -> None:
     assert document.metadata.uri == spec.uri
 
 
-def test_cache_control_without_valid_max_age_leaves_expiry_unknown() -> None:
+@pytest.mark.parametrize(
+    "cache_control",
+    [None, "public, max-age=0, must-revalidate", "no-cache, must-revalidate", "max-age=3600"],
+    ids=["absent", "openai-max-age-0", "google-no-cache", "one-hour"],
+)
+def test_a_range_snapshot_vouches_for_a_fixed_period_whatever_its_http_headers(
+    cache_control: str | None,
+) -> None:
     spec = range_spec()
+    document = _document_from_result(spec, fetch_result(spec, cache_control=cache_control))
+
+    assert document.metadata.expires_at is not None
+    assert (
+        document.metadata.expires_at - document.metadata.retrieved_at
+        == RANGE_SNAPSHOT_VALIDITY
+    )
+
+
+def test_a_key_directory_follows_http_freshness() -> None:
+    spec = directory_spec()
+    retrieved_at = datetime(2026, 8, 14, 12, 0, tzinfo=UTC)
+
+    assert _expires_at(spec, retrieved_at, "max-age=3600") == retrieved_at + timedelta(hours=1)
     for value in (None, "public", "max-age=not-a-number", "max-age=-1"):
-        document = _document_from_result(spec, fetch_result(spec, cache_control=value))
-        assert document.metadata.expires_at is None
+        assert _expires_at(spec, retrieved_at, value) is None
 
 
 def test_status_and_validate_use_only_local_cache(tmp_path, monkeypatch) -> None:

@@ -17,7 +17,7 @@ Self-hosted, explainable intelligence for automated and AI-originated web traffi
 | **What** | Classifies web traffic along four independent axes (automation, AI-relatedness, verified identity, risk), explains every score with evidence, and never acts on traffic. |
 | **Why it is hard** | The labels that make evaluation possible also leak the answer. Most of the engineering goes into making the evaluation impossible to flatter. |
 | **Stack** | Python 3.11 standard library only (cryptography optional), `mypy --strict`, Hypothesis; a FastAPI origin on Railway behind a Cloudflare Worker in the companion [observation laboratory](https://github.com/jccontrerasg08-cpu/ati-observation-lab); BigQuery for run results. |
-| **Evidence** | 479 tests with an 85% coverage gate; 22/22 live perimeter checks in production; a 24-session live campaign through the real edge. |
+| **Evidence** | 484 tests with an 85% coverage gate; 22/22 live perimeter checks in production; a 24-session live campaign through the real edge. |
 | **Read next** | [Case study](docs/case-study.md) · [Engineering principles in practice](docs/engineering-principles.md) · [Documentation map](docs/README.md) · [Decision records](docs/README.md#decisions) |
 
 ## Why this exists
@@ -114,6 +114,41 @@ For PowerShell:
 $env:ATI_HASH_KEY = 'replace-with-a-long-random-secret'
 ati analyze examples/data/access.jsonl --source nginx --output detections.jsonl
 ```
+
+## See it work: a claim is not an identity
+
+[`examples/data/identity-demo.jsonl`](examples/data/identity-demo.jsonl) holds three
+requests: GPTBot from an address OpenAI publishes, the identical User-Agent from an address
+it does not, and an ordinary browser.
+
+```bash
+python -m pip install -e .
+export ATI_HASH_KEY='demo-only' ATI_SOURCE_CACHE="$(mktemp -d)"
+
+ati analyze examples/data/identity-demo.jsonl --verify-identity --output before.jsonl
+ati sources refresh --provider openai    # the only step that touches the network
+ati analyze examples/data/identity-demo.jsonl --verify-identity --output after.jsonl
+```
+
+Output from a run on 2026-10-05, with scores rounded:
+
+| Request | automation | ai | identity | before refresh | after refresh |
+|---|---:|---:|---|---|---|
+| GPTBot from `132.196.86.10` (published by OpenAI) | 0.86 | 0.83 | 0.06 → **0.94** | `claimed`: range source unavailable | **`verified`**: address in the official range |
+| Same GPTBot User-Agent from `203.0.113.42` | 0.86 | 0.83 | 0.06 | `claimed`: range source unavailable | `claimed`: not in a positive-only list, which is not proof of fraud |
+| Browser | 0.10 | 0.05 | 0.03 | no claim | no claim |
+
+Three properties are visible:
+
+- The User-Agent makes both GPTBot requests look automated and AI-related. It never makes
+  them *identified*.
+- Without fresh evidence ATI says `unavailable` and does not guess. Analysis never fetches
+  anything on its own.
+- Absence from a positive-only list leaves a claim unconfirmed, not failed. Only
+  contradicting evidence yields `failed`.
+
+The published ranges change over time, so the first row may need a current address from
+[`gptbot.json`](https://openai.com/gptbot.json).
 
 ## V1 verified identity
 

@@ -27,6 +27,9 @@ from agent_traffic_intelligence.identity.sources.models import (
 from agent_traffic_intelligence.identity.standards import DEFAULT_STANDARDS_PROFILE
 
 _DIRECTORY_MEDIA_TYPE = "application/http-message-signatures-directory+json"
+# How long a retrieved IP-range snapshot may verify requests. It matches the weekly
+# scheduled refresh in .github/workflows/source-health.yml.
+RANGE_SNAPSHOT_VALIDITY = timedelta(days=7)
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +206,19 @@ def _max_age_seconds(cache_control: str | None) -> int | None:
     return None
 
 
-def _expires_at(retrieved_at: datetime, cache_control: str | None) -> datetime | None:
+def _expires_at(
+    spec: SourceSpec, retrieved_at: datetime, cache_control: str | None
+) -> datetime | None:
+    """Return until when a cached source may vouch for a request.
+
+    A key directory follows HTTP freshness, because its max-age is how a signer
+    announces key rotation. A published IP-range list does not: providers serve them
+    with ``max-age=0`` (OpenAI) or no freshness at all (Google, Perplexity), which made
+    a fresh snapshot unusable or an old one usable forever. A range snapshot instead
+    vouches for a fixed period after ATI retrieved it (ADR 0009).
+    """
+    if spec.source_type is SourceType.IP_RANGES:
+        return retrieved_at + RANGE_SNAPSHOT_VALIDITY
     max_age = _max_age_seconds(cache_control)
     if max_age is None:
         return None
@@ -252,7 +267,7 @@ def _document_from_result(spec: SourceSpec, result: FetchResult) -> SourceDocume
         binding_scope=spec.binding_scope,
         retrieved_at=retrieved_at,
         source_created_at=source_created_at,
-        expires_at=_expires_at(retrieved_at, result.cache_control),
+        expires_at=_expires_at(spec, retrieved_at, result.cache_control),
         content=result.body,
         content_type=result.content_type,
         parser_profile=spec.parser_profile,
@@ -270,7 +285,7 @@ def _revalidated_document(
     result: FetchResult,
 ) -> SourceDocument:
     retrieved_at = datetime.now(UTC)
-    expires_at = _expires_at(retrieved_at, result.cache_control)
+    expires_at = _expires_at(spec, retrieved_at, result.cache_control)
     return SourceDocument.from_bytes(
         uri=spec.uri,
         source_type=spec.source_type,

@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
+import agent_traffic_intelligence.identity.source_service as source_service
 from agent_traffic_intelligence.identity.configured import (
     ProviderAwareVerificationManager,
     apply_cached_crypto_binding,
@@ -26,6 +27,7 @@ from agent_traffic_intelligence.identity.profiles import (
     provider_profile,
 )
 from agent_traffic_intelligence.identity.sources.cache import SourceCache
+from agent_traffic_intelligence.identity.sources.fetcher import FetchResult
 from agent_traffic_intelligence.identity.sources.models import (
     KeyAuthorityBinding,
     SourceAcquisition,
@@ -204,6 +206,64 @@ def test_stale_cached_range_is_neutral_not_identity_failure(tmp_path) -> None:
 
     assert resolution.state is VerificationState.CLAIMED
     assert resolution.methods[0].outcome is VerificationOutcome.STALE
+
+
+class OneResponseFetcher:
+    def __init__(self, result: FetchResult) -> None:
+        self.result = result
+
+    def fetch(
+        self,
+        uri: str,
+        *,
+        etag: str | None = None,
+        last_modified: str | None = None,
+        follow_redirects: bool = True,
+    ) -> FetchResult:
+        return replace(self.result, uri=uri)
+
+
+def test_a_range_list_served_with_max_age_zero_verifies_until_the_snapshot_ages_out(
+    tmp_path, monkeypatch
+) -> None:
+    # OpenAI serves its range lists with "max-age=0, must-revalidate". Reading that as
+    # data validity made every freshly refreshed snapshot stale on arrival.
+    profile = provider_profile("openai").range_sources[0]
+    spec = source_service.SourceSpec(
+        provider="openai",
+        uri=profile.uri,
+        source_type=SourceType.IP_RANGES,
+        parser_profile=profile.format_profile,
+        binding_scope=profile.binding_scope,
+    )
+    monkeypatch.setattr(source_service, "configured_sources", lambda: (spec,))
+    served = FetchResult(
+        uri=profile.uri,
+        status=200,
+        body=b'{"creationTime":"2026-08-14T11:55:00Z","prefixes":[{"ipv4Prefix":"192.0.2.0/24"}]}',
+        content_type="application/json",
+        etag=None,
+        last_modified=None,
+        cache_control="public, max-age=0, must-revalidate",
+        redirects=0,
+        not_modified=False,
+    )
+    cache = SourceCache(tmp_path)
+    source_service.refresh_sources(cache, fetcher=OneResponseFetcher(served))
+    retrieved_at = datetime.now(UTC)
+    manager = ProviderAwareVerificationManager(cache)
+
+    def verify_at(moment: datetime):
+        return manager.verify(
+            event=replace(event(), timestamp=moment), context=context(), claim=claim()
+        )
+
+    fresh = verify_at(retrieved_at + timedelta(hours=1))
+    aged = verify_at(retrieved_at + source_service.RANGE_SNAPSHOT_VALIDITY + timedelta(hours=1))
+
+    assert fresh.state is VerificationState.VERIFIED
+    assert aged.state is VerificationState.CLAIMED
+    assert aged.methods[0].outcome is VerificationOutcome.STALE
 
 
 def test_offline_mode_does_not_add_fcrdns_verifier(tmp_path) -> None:

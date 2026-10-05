@@ -132,6 +132,11 @@ not clear the constant baseline.
   signature library judged time by the wall clock. Key discovery followed redirects that
   the protocol forbids. Each fix has a regression test
   ([review record](standards-status.md#review-of-the-working-group-adoption-2026-10-02)).
+- **A demo that found a bug.** Writing the README demo against OpenAI's live range lists
+  showed that OpenAI verification had never passed. The lists are served with `max-age=0`,
+  and ATI read HTTP cache freshness as data validity, so every snapshot was stale on
+  arrival. Google's lists had the opposite problem and never expired. Range validity is
+  now ATI's own policy ([ADR 0009](adr/0009-range-snapshot-validity.md)).
 - **Warehouse.** Run results load into BigQuery as aggregate-only, append-only tables keyed
   by run ([ADR 0008](adr/0008-aggregate-only-warehouse-export.md)), verified end to end in a
   disposable self-test dataset.
@@ -145,7 +150,7 @@ not clear the constant baseline.
 
 ## Engineering practice
 
-- Python 3.11+, `mypy --strict`, `ruff`. 479 tests in ATI with an 85% coverage gate; 110
+- Python 3.11+, `mypy --strict`, `ruff`. 484 tests in ATI with an 85% coverage gate; 110
   Python and 23 Worker tests in the laboratory. Property-based tests (Hypothesis) for the
   parser, the IP-range logic and the evaluation splits.
 - CI installs hash-pinned dependencies and runs per-area test profiles, CodeQL, OpenSSF Scorecard, dependency review and a
