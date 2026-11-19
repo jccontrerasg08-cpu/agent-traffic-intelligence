@@ -90,11 +90,6 @@ Do not change this policy merely because an upstream endpoint is reachable. Poli
 
 ## Scheduled/manual health
 
-`.github/workflows/source-health.yml` is intentionally schedule/manual-only and read-only. It:
-
-1. runs `ati standards health` against the constrained Datatracker API;
-2. refreshes configured official identity sources;
-3. validates the resulting cache offline;
-4. prints provenance-safe source status.
+`.github/workflows/source-health.yml` is intentionally schedule/manual-only and read-only. It runs two independent jobs. One runs `ati standards health` against the constrained Datatracker API. The other refreshes official identity sources, validates the cache offline, and prints provenance-safe status. A failure in either job remains visible in the workflow result.
 
 Scheduled source-health checks belong outside merge-blocking PR CI. A standards revision/state change returns a review-required failure instead of silently updating pins. Provider/schema drift should likewise produce a reviewable failure or follow-up change, not an automatic trust-policy rewrite. PR CI remains hermetic and does not depend on live provider or IETF endpoints.

@@ -31,3 +31,13 @@ def test_source_health_checks_datatracker_standards_drift() -> None:
 
     assert "PYTHONPATH: src" in workflow
     assert "python -m agent_traffic_intelligence.cli standards health" in workflow
+
+
+def test_standards_and_provider_sources_run_independently() -> None:
+    standards, providers = workflow_text().split("\n  provider-sources:\n", 1)
+
+    assert "standards health" in standards
+    assert "sources refresh" in providers
+    assert "sources validate" in providers
+    assert "sources status" in providers
+    assert "\n    needs:" not in providers
