@@ -71,6 +71,17 @@ class HumanPauseModel(StrEnum):
     """Aims at the middle of the range with a personal, right-skewed irregularity."""
 
 
+class AutomationPauseModel(StrEnum):
+    """How simulated automation chooses each pause."""
+
+    TIMER = "timer"
+    """Draws every pause uniformly within the regime, like the laboratory executor."""
+
+    IMITATE = "imitate"
+    """Replaces each timer pause, with probability equal to the imitation fidelity, by a
+    pause drawn the way the human model draws one, with traits of its own."""
+
+
 @dataclass(frozen=True, slots=True)
 class SimulatedCorpus:
     """Preflight inputs for one synthetic corpus."""
@@ -96,12 +107,20 @@ def simulate_matched_corpus(
     participants: int,
     windows: int = SIMULATED_WINDOWS,
     seed: int = 0,
+    automation_model: AutomationPauseModel = AutomationPauseModel.TIMER,
+    imitation_fidelity: float = 0.0,
 ) -> SimulatedCorpus:
     """Build one corpus with `sessions_per_cell` sessions per task, window, regime and cohort.
 
     Participants are spread over the task-by-window cells, so there must be at least one
     per cell. A cell's consented sessions rotate among that cell's participants.
+
+    Imitation draws only from its own random stream, seeded from `seed`. The main stream
+    therefore produces the same participants, human pauses and timer pauses at every
+    fidelity, and fidelity 0 reproduces the plain timer exactly.
     """
+
+    _validated_imitation(automation_model, imitation_fidelity)
 
     cells = [(task, f"w{window + 1}") for task in SIMULATED_PLANS for window in range(windows)]
     if sessions_per_cell < 1:
@@ -111,15 +130,11 @@ def simulate_matched_corpus(
     if participants < len(cells):
         raise ValueError(f"participants must be at least {len(cells)}, one per task and window")
     generator = random.Random(seed)
+    imitation = random.Random(f"imitation-{seed}")
+    imitating = automation_model is AutomationPauseModel.IMITATE
     people: dict[tuple[str, str], list[_Person]] = {cell: [] for cell in cells}
     for number in range(participants):
-        people[cells[number % len(cells)]].append(
-            _Person(
-                code=f"p{number + 1:02d}",
-                pace=math.exp(generator.gauss(0.0, _PERSONAL_PACE_SPREAD)),
-                irregularity=generator.uniform(0.25, 0.55),
-            )
-        )
+        people[cells[number % len(cells)]].append(_draw_person(generator, f"p{number + 1:02d}"))
 
     records: list[dict[str, Any]] = []
     labels: dict[str, bool] = {}
@@ -138,6 +153,10 @@ def simulate_matched_corpus(
                         _pause(generator, human_model, person, low, high)
                         for _ in SIMULATED_PLANS[task][1:]
                     ]
+                    if automated and imitating:
+                        pauses = _imitate(
+                            pauses, imitation, human_model, imitation_fidelity, low, high
+                        )
                     records.extend(_session_records(session, SIMULATED_PLANS[task], pauses))
                     labels[session] = automated
                     tasks[session] = task
@@ -167,6 +186,46 @@ def _session_records(
     return records
 
 
+def _validated_imitation(automation_model: AutomationPauseModel, fidelity: float) -> None:
+    if not 0.0 <= fidelity <= 1.0:
+        raise ValueError("imitation_fidelity must be between 0 and 1")
+    if automation_model is AutomationPauseModel.TIMER and fidelity != 0.0:
+        raise ValueError("imitation_fidelity needs the imitate automation model")
+
+
+def _draw_person(generator: random.Random, code: str) -> _Person:
+    """Draw the traits of one simulated person, participant or imitating persona alike."""
+
+    return _Person(
+        code=code,
+        pace=math.exp(generator.gauss(0.0, _PERSONAL_PACE_SPREAD)),
+        irregularity=generator.uniform(0.25, 0.55),
+    )
+
+
+def _imitate(
+    timer_pauses: list[float],
+    imitation: random.Random,
+    human_model: HumanPauseModel,
+    fidelity: float,
+    low: float,
+    high: float,
+) -> list[float]:
+    """Replace some timer pauses with person-like ones from a persona of the session's own.
+
+    The persona is never a participant: sharing one would tie an automated session to a
+    person, which the participant-grouped splits cannot purge.
+    """
+
+    persona = _draw_person(imitation, "persona")
+    return [
+        _pause(imitation, human_model, persona, low, high)
+        if imitation.random() < fidelity
+        else pause
+        for pause in timer_pauses
+    ]
+
+
 def _pause(
     generator: random.Random,
     human_model: HumanPauseModel,
@@ -192,6 +251,8 @@ def plan_collection(
     repeats: int = 20,
     resamples: int = 300,
     seed: int = 0,
+    automation_model: AutomationPauseModel = AutomationPauseModel.TIMER,
+    imitation_fidelity: float = 0.0,
 ) -> dict[str, Any]:
     """Estimate how often the ladder detects `human_model` at each corpus size.
 
@@ -202,6 +263,7 @@ def plan_collection(
 
     if repeats < 1:
         raise ValueError("repeats must be positive")
+    _validated_imitation(automation_model, imitation_fidelity)
     rows = []
     for sessions_per_cell in sessions_per_cell_options:
         outcomes = [
@@ -211,6 +273,8 @@ def plan_collection(
                     sessions_per_cell=sessions_per_cell,
                     participants=participants,
                     seed=seed * 1_000_003 + repeat,
+                    automation_model=automation_model,
+                    imitation_fidelity=imitation_fidelity,
                 ),
                 resamples=resamples,
                 seed=repeat,
@@ -236,6 +300,8 @@ def plan_collection(
     return {
         "fixture": True,
         "human_model": human_model.value,
+        "automation_model": automation_model.value,
+        "imitation_fidelity": imitation_fidelity,
         "participants": participants,
         "repeats": repeats,
         "resamples": resamples,

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 from datetime import datetime
 from itertools import pairwise
+from typing import Any
 
 import pytest
 
@@ -15,7 +17,9 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
 from agent_traffic_intelligence.evaluation.pf2.simulation import (
     PACING_REGIMES,
     SIMULATED_PLANS,
+    AutomationPauseModel,
     HumanPauseModel,
+    SimulatedCorpus,
     plan_collection,
     simulate_matched_corpus,
 )
@@ -179,3 +183,219 @@ def test_cli_refuses_too_few_participants(tmp_path, capsys) -> None:
 
     assert code == 2
     assert "at least 6" in capsys.readouterr().err
+
+
+# Captured on the code before imitation existed (specs/001-adversarial-timing, T001), so
+# the plain timer must keep reproducing every corpus and every recorded result exactly.
+_CHARACTERIZATION_DIGESTS = {
+    HumanPauseModel.LINGER: "3a9a269d0a8c8f9cd76c2ab972171a89d7efd9008f2e2c6119b66d768279d937",
+    HumanPauseModel.LOGNORMAL: "341bebf92d975b0bafd30f88e72ceb92575c97b6e902cb7890e4ff2d827b9b47",
+}
+
+
+def _digest(corpus: SimulatedCorpus) -> str:
+    payload = json.dumps(
+        [corpus.records, corpus.labels, corpus.tasks, corpus.windows, corpus.groups],
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+@pytest.mark.parametrize("human_model", sorted(_CHARACTERIZATION_DIGESTS))
+def test_the_plain_timer_reproduces_every_corpus_from_before_imitation(
+    human_model: HumanPauseModel,
+) -> None:
+    corpus = simulate_matched_corpus(
+        human_model=human_model, sessions_per_cell=2, participants=12, seed=7
+    )
+
+    assert _digest(corpus) == _CHARACTERIZATION_DIGESTS[human_model]
+
+
+def _pauses_by_session(corpus: SimulatedCorpus) -> dict[str, list[float]]:
+    stamps: dict[str, list[datetime]] = defaultdict(list)
+    for record in corpus.records:
+        stamps[record["session_id"]].append(datetime.fromisoformat(record["time_iso8601"]))
+    return {
+        session: [(later - earlier).total_seconds() for earlier, later in pairwise(times)]
+        for session, times in stamps.items()
+    }
+
+
+def _imitating(
+    fidelity: float, human_model: HumanPauseModel = HumanPauseModel.LINGER
+) -> SimulatedCorpus:
+    return simulate_matched_corpus(
+        human_model=human_model,
+        sessions_per_cell=2,
+        participants=12,
+        seed=7,
+        automation_model=AutomationPauseModel.IMITATE,
+        imitation_fidelity=fidelity,
+    )
+
+
+def test_imitation_at_fidelity_zero_is_the_plain_timer() -> None:
+    assert _digest(_imitating(0.0)) == _CHARACTERIZATION_DIGESTS[HumanPauseModel.LINGER]
+
+
+def test_full_imitation_makes_automated_pauses_person_like() -> None:
+    corpus = _imitating(1.0)
+    timer_high = max(bounds[1] for bounds in PACING_REGIMES.values())
+
+    automated = [
+        pause
+        for session, pauses in _pauses_by_session(corpus).items()
+        if corpus.labels[session]
+        for pause in pauses
+    ]
+    # A lingering person runs past the range; the timer never does.
+    assert max(automated) > timer_high
+
+
+def test_imitation_leaves_every_human_session_unchanged() -> None:
+    timer = _pauses_by_session(_imitating(0.0))
+    imitated = _imitating(0.75)
+
+    for session, pauses in _pauses_by_session(imitated).items():
+        if not imitated.labels[session]:
+            assert pauses == timer[session]
+    assert imitated.groups == _imitating(0.0).groups
+
+
+def test_an_imitating_session_never_takes_a_participant_code() -> None:
+    corpus = _imitating(1.0)
+
+    participants = {corpus.groups[s] for s, automated in corpus.labels.items() if not automated}
+    automated_groups = {corpus.groups[s] for s, automated in corpus.labels.items() if automated}
+    assert not participants & automated_groups
+
+
+@pytest.mark.parametrize(
+    ("automation_model", "fidelity", "message"),
+    [
+        (AutomationPauseModel.IMITATE, -0.1, "between 0 and 1"),
+        (AutomationPauseModel.IMITATE, 1.5, "between 0 and 1"),
+        (AutomationPauseModel.TIMER, 0.5, "needs the imitate"),
+    ],
+)
+def test_inconsistent_imitation_is_refused(
+    automation_model: AutomationPauseModel, fidelity: float, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        simulate_matched_corpus(
+            human_model=HumanPauseModel.LINGER,
+            sessions_per_cell=1,
+            participants=6,
+            automation_model=automation_model,
+            imitation_fidelity=fidelity,
+        )
+    with pytest.raises(ValueError, match=message):
+        plan_collection(
+            human_model=HumanPauseModel.LINGER,
+            sessions_per_cell_options=[1],
+            participants=6,
+            automation_model=automation_model,
+            imitation_fidelity=fidelity,
+        )
+
+
+def test_a_perfect_mimic_removes_what_the_timer_lets_the_ladder_detect() -> None:
+    # Paired: both plans score the same human sessions; only the automation differs.
+    def plan(fidelity: float) -> dict[str, Any]:
+        return plan_collection(
+            human_model=HumanPauseModel.LOGNORMAL,
+            sessions_per_cell_options=[2],
+            participants=12,
+            repeats=5,
+            resamples=200,
+            automation_model=AutomationPauseModel.IMITATE,
+            imitation_fidelity=fidelity,
+        )
+
+    timer, mimic = plan(0.0), plan(1.0)
+
+    assert mimic["automation_model"] == "imitate"
+    assert mimic["imitation_fidelity"] == 1.0
+    assert timer["sizes"][0]["detection_rate"] >= 0.8
+    # One chance detection in five is allowed: a null is not detected more often.
+    assert mimic["sizes"][0]["detection_rate"] <= 0.2
+
+
+def test_cli_records_the_imitating_adversary_in_the_plan(tmp_path, capsys) -> None:
+    output = tmp_path / "plan.json"
+
+    code = main(
+        [
+            "pf2-simulate",
+            "--human-model",
+            "linger",
+            "--sessions-per-cell",
+            "1",
+            "--participants",
+            "6",
+            "--repeats",
+            "1",
+            "--resamples",
+            "20",
+            "--automation-model",
+            "imitate",
+            "--imitation-fidelity",
+            "0.5",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert code == 0
+    capsys.readouterr()
+    plan = json.loads(output.read_text())
+    assert (plan["automation_model"], plan["imitation_fidelity"]) == ("imitate", 0.5)
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--automation-model", "imitate", "--imitation-fidelity", "1.5"], "between 0 and 1"),
+        (["--imitation-fidelity", "0.5"], "needs the imitate"),
+    ],
+)
+def test_cli_refuses_inconsistent_imitation_and_writes_nothing(
+    tmp_path, capsys, extra: list[str], message: str
+) -> None:
+    output = tmp_path / "plan.json"
+
+    code = main(
+        [
+            "pf2-simulate",
+            "--human-model",
+            "linger",
+            "--sessions-per-cell",
+            "1",
+            "--participants",
+            "6",
+            "--output",
+            str(output),
+            *extra,
+        ]
+    )
+
+    assert code == 2
+    assert message in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_imitating_a_timer_like_person_still_runs_and_reports() -> None:
+    plan = plan_collection(
+        human_model=HumanPauseModel.UNIFORM,
+        sessions_per_cell_options=[1],
+        participants=6,
+        repeats=1,
+        resamples=20,
+        automation_model=AutomationPauseModel.IMITATE,
+        imitation_fidelity=1.0,
+    )
+
+    assert plan["human_model"] == "uniform"
+    assert plan["automation_model"] == "imitate"
+    assert len(plan["sizes"]) == 1
