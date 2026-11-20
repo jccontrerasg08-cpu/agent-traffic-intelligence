@@ -11,6 +11,8 @@ the Spanish ones are the original working records and are kept in their language
 | [Engineering principles in practice](engineering-principles.md) | Where *The Pragmatic Programmer*, *Code Complete*, *Clean Code* and *Designing Data-Intensive Applications* show up in this code, file by file. |
 | [Architecture overview *(es)*](architecture/README.md) | Module boundaries, environments and the case catalogue. |
 | [Threat model](threat-model.md) | What ATI defends against, what it trusts, and what it deliberately does not do. |
+| [Constitution](../.specify/memory/constitution.md) | The seven principles every feature plan is checked against, each tied to the ADR or test that enforces it. |
+| [Feature specifications](../specs/) | Spec Kit specifications, plans and task lists, starting with [001 adversarial timing](../specs/001-adversarial-timing/spec.md). |
 
 ## Decisions
 

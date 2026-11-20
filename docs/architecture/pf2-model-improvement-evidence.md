@@ -94,15 +94,53 @@ the same reliability needs about twice the sessions. Assign each participant to 
 task and collection window. Otherwise the participant-grouped temporal and task holdouts
 lose their human training sessions, and the ladder refuses them.
 
+## Evidence 4: an adversary that imitates people
+
+*Added 2026-11-20 by [spec 001](../../specs/001-adversarial-timing/spec.md).*
+
+The evidence above only faced a plain timer. Here, simulated automation imitates people:
+at fidelity *f*, each automated pause is replaced, with probability *f*, by one drawn the
+way the human model draws it. The traits for that draw belong to a persona the automated
+session samples for itself, never a participant's. Imitation uses its own random stream,
+so all fidelities score the same human sessions. At fidelity 0 the corpora are
+byte-identical to those above, which a characterization test enforces. The design is the
+recommended one: 12 participants, 72 sessions, participant-grouped splits, 20 corpora
+per cell.
+
+| Imitation fidelity | 0 | 0.25 | 0.5 | 0.75 | 1 |
+|---|---:|---:|---:|---:|---:|
+| `linger`: detected | 95% | 50% | 15% | 0% | 0% |
+| `linger`: mean PR-AUC | 0.91 | 0.75 | 0.62 | 0.58 | 0.54 |
+| `lognormal`: detected | 90% | 50% | 15% | 15% | 0% |
+| `lognormal`: mean PR-AUC | 0.85 | 0.74 | 0.59 | 0.61 | 0.55 |
+
+**Timing shape is a fragile signal.** Detection falls below 50% between fidelity 0.25 and
+0.5. Imitating a quarter of the pauses halves it, to 50%, and imitating half of them leaves
+15%,
+which is close to the null. A perfect mimic is not detected at all, as it must not be,
+since it is a null. The step from 0.5 to 0.75 for `lognormal` (15% and 15%) is within the
+sampling error of 20 corpora.
+
+What follows for the project:
+
+- Timing shape can support a classification against unsophisticated automation, but it
+  is cheap to defeat. It must never stand in for identity, which already comes only from
+  verification (constitution principle II).
+- Any later real-data claim about timing shape must say that it does not survive
+  imitation, and quote this curve.
+- The laboratory can test a real adversary only once its executor gains an imitating
+  pacing mode. That is a separate feature.
+
 ## What this does not establish
 
 - That real people pause like either human model. They may be more regular than
   `lognormal` or less than `linger`, and only the consented cohort can tell.
 - Any performance on public traffic, a population false-positive rate, calibration or an
   operating threshold.
-- That the tempo-shape family stays useful against automation built to imitate it. A
-  timer that draws from a person-like distribution is the obvious next adversary, and the
-  laboratory can test it with the same matched design.
+- How a real adversary imitates. Evidence 4 models imitation as a share of person-like
+  pauses. A bot that learns from observed traffic, or that imitates only some steps, may
+  do better or worse, and no real imitating automation has been run through the
+  laboratory.
 
 ## Reproduce
 
@@ -111,6 +149,16 @@ ati pf2-simulate --human-model lognormal --sessions-per-cell 1 2 4 \
   --participants 12 --repeats 20 --output plan-lognormal-12.json
 ati pf2-simulate --human-model uniform --sessions-per-cell 1 2 4 \
   --participants 12 --repeats 20 --output plan-null-12.json
+```
+
+Evidence 4, one fidelity at a time:
+
+```bash
+for f in 0 0.25 0.5 0.75 1; do
+  ati pf2-simulate --human-model lognormal --sessions-per-cell 2 --participants 12 \
+    --repeats 20 --automation-model imitate --imitation-fidelity "$f" \
+    --output "imitate-lognormal-$f.json"
+done
 ```
 
 `--sessions-per-cell` 1, 2 and 4 give corpora of 36, 72 and 144 sessions. Evidence 1 and 2

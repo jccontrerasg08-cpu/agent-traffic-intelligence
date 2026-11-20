@@ -335,6 +335,11 @@ ati pf2-simulate --human-model lognormal --sessions-per-cell 1 2 4 --participant
   --output plan.json
 ```
 
+With `--automation-model imitate --imitation-fidelity F`, simulated automation replaces a
+share *F* of its timer pauses with person-like ones, to test how much imitation it takes
+to defeat timing-shape detection
+([spec 001](specs/001-adversarial-timing/spec.md)).
+
 ```bash
 ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \
   --target-false-positive-rate 0.05
@@ -391,6 +396,17 @@ make check
 Run `make profile-matrix` to exercise every isolated variation plus the installed-wheel smoke contract. Its individual targets are `make test-core`, `make test-identity`, `make test-service`, `make test-research`, `make test-controlled`, `make test-evaluation`, `make package`, and `make smoke-service`. Each profile uses fixtures or loopback only; none refreshes external sources, captures browser traffic, or needs production secrets.
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+
+### Spec-driven development
+
+New features follow [Spec Kit](https://github.com/github/spec-kit). The project's
+[constitution](.specify/memory/constitution.md) gathers the principles behind the ADRs into
+seven gates that every plan is checked against. Each feature then gets a specification
+(what and why), a plan (how, with a Constitution Check), and a dependency-ordered task
+list under [`specs/`](specs/). The first, [001 adversarial timing](specs/001-adversarial-timing/spec.md),
+tests timing-shape detection against automation that imitates people. In Claude Code the
+steps are the `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`
+and `/speckit-converge` skills in `.claude/skills/`.
 
 ## Non-goals
 
