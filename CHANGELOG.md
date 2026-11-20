@@ -6,6 +6,8 @@ All notable changes will be documented here.
 
 ### Added
 
+- Spec-driven development with Spec Kit 1.4.3: a project constitution that gathers the ADRs' principles into seven gates, and the first specification, plan and task list in `specs/001-adversarial-timing/`.
+- `ati pf2-simulate --automation-model imitate --imitation-fidelity F`: simulated automation that imitates human pausing, drawn from its own random stream so the plain timer's corpora stay byte-identical. The fidelity sweep is recorded in the model improvement evidence.
 - Observe-only V0 architecture, privacy-safe JSONL normalization, curated agent claims, bounded request/session features, four independent scores, and the original CLI.
 - ATI-PF-2 baseline ladder (`ati pf2-baseline`): forward-chained temporal, leave-one-task-out and grouped-session holdouts, a constant-prevalence baseline, a dependency-free L2-regularized logistic regression, train-partition-only standardization and threshold selection, session-cluster resampling intervals, and one refit ablation per permitted feature family.
 - Privacy-safe warehouse export (`ati pf2-export-bigquery`): aggregate run, metric, ablation, feature-summary and cohort tables with BigQuery schemas and DDL. The split manifest is not exportable and per-session feature rows are reduced to per-class aggregates.

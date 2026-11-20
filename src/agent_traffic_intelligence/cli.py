@@ -40,7 +40,11 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2ProtocolError,
     prepare_pf2_dataset,
 )
-from agent_traffic_intelligence.evaluation.pf2.simulation import HumanPauseModel, plan_collection
+from agent_traffic_intelligence.evaluation.pf2.simulation import (
+    AutomationPauseModel,
+    HumanPauseModel,
+    plan_collection,
+)
 from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
 from agent_traffic_intelligence.identity.policy import VerificationMode
@@ -319,6 +323,18 @@ def _add_pf2_simulate_command(subparsers: _Subparsers) -> None:
         type=_positive_integer,
         default=300,
         help="Session-cluster resamples per baseline run (default: 300).",
+    )
+    simulate.add_argument(
+        "--automation-model",
+        choices=[model.value for model in AutomationPauseModel],
+        default=AutomationPauseModel.TIMER.value,
+        help="Simulated automation pauses: 'imitate' draws person-like ones (default: timer).",
+    )
+    simulate.add_argument(
+        "--imitation-fidelity",
+        type=float,
+        default=0.0,
+        help="Share of imitating automation's pauses drawn person-like, 0 to 1 (default: 0).",
     )
     simulate.add_argument("--seed", type=int, default=0, help="Deterministic seed (default: 0).")
     simulate.add_argument("--output", required=True, help="New JSON path for the plan.")
@@ -910,6 +926,8 @@ def _pf2_simulate(args: argparse.Namespace) -> int:
             repeats=args.repeats,
             resamples=args.resamples,
             seed=args.seed,
+            automation_model=AutomationPauseModel(args.automation_model),
+            imitation_fidelity=args.imitation_fidelity,
         )
         _write_json(Path(args.output), plan)
     except (OSError, ValueError) as exc:

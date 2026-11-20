@@ -33,6 +33,7 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
     prepare_pf2_dataset,
 )
 from agent_traffic_intelligence.evaluation.pf2.simulation import (
+    AutomationPauseModel,
     HumanPauseModel,
     SimulatedCorpus,
     plan_collection,
@@ -44,6 +45,7 @@ __all__ = [
     "PF2_FEATURE_FAMILIES",
     "PF2_ROUTE_CATEGORIES",
     "PF2_TARGET_NAME",
+    "AutomationPauseModel",
     "HumanPauseModel",
     "PF2BaselineError",
     "PF2BaselineReport",

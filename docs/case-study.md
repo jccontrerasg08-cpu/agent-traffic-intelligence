@@ -114,7 +114,10 @@ difference in 90–95% of simulated collections of 72 sessions from 12 people, a
 claims one against a null. A boosted-tree model was tried and did worse, so the ladder
 kept the simpler logistic. Splits now also hold out whole participants, and a power analysis sets
 the recruitment target at 12 people with 3 sessions each
-([evidence](architecture/pf2-model-improvement-evidence.md)).
+([evidence](architecture/pf2-model-improvement-evidence.md)). The same evidence also shows
+the limit: automation that imitates human pausing on a quarter of its pauses halves
+detection. Timing shape can support a classification against unsophisticated automation,
+and it is never identity.
 
 ## Running it against real infrastructure
 

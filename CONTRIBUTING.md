@@ -11,6 +11,16 @@ Thanks for helping improve Agent Traffic Intelligence.
 - Prefer primary-source documentation for agent identity registry changes.
 - Do not copy code from research references without an explicit license review.
 
+The full set of principles, with the ADR or test that enforces each, is the
+[constitution](.specify/memory/constitution.md).
+
+## Feature workflow
+
+New features follow Spec Kit: write `specs/NNN-name/spec.md` (what and why, no
+implementation), then `plan.md` with its Constitution Check, then `tasks.md`, and only then
+implement. Behaviour changes ship with a test that fails without them; a refactor ships
+with proof that its outputs are unchanged.
+
 ## Development setup
 
 ```bash
