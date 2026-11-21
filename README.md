@@ -414,7 +414,9 @@ seven gates that every plan is checked against. Each feature then gets a specifi
 list under [`specs/`](specs/). The first, [001 adversarial timing](specs/001-adversarial-timing/spec.md),
 tests timing-shape detection against automation that imitates people; the second,
 [002 content-conditional timing](specs/002-content-conditional-timing/spec.md), adds a
-reading scenario and a feature that asks whether long pauses fall on long pages. In Claude Code the
+reading scenario and a feature that asks whether long pauses fall on long pages; the third,
+[003 laboratory adversary](specs/003-laboratory-adversary/spec.md), lets the laboratory's
+automated cohort run those adversaries for real. In Claude Code the
 steps are the `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`
 and `/speckit-converge` skills in `.claude/skills/`.
 
