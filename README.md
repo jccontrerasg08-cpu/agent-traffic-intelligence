@@ -348,6 +348,13 @@ draws person-like pauses but places them without regard to the page, and
 family detects the first and, by design, not the second
 ([spec 002](specs/002-content-conditional-timing/spec.md)).
 
+`ati external-check --archive dataset.zip --output report.json` runs the same timing
+features on Iliou et al.'s public web bot dataset, whose labels come from how each session
+was produced. Download the archive yourself from m4d.iti.gr: its licence, CC BY-NC-SA
+4.0, forbids committing it here. The report holds aggregates only, and Evidence 5 in the
+[model improvement evidence](docs/architecture/pf2-model-improvement-evidence.md) records
+what it shows.
+
 ```bash
 ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \
   --target-false-positive-rate 0.05
@@ -414,7 +421,9 @@ seven gates that every plan is checked against. Each feature then gets a specifi
 list under [`specs/`](specs/). The first, [001 adversarial timing](specs/001-adversarial-timing/spec.md),
 tests timing-shape detection against automation that imitates people; the second,
 [002 content-conditional timing](specs/002-content-conditional-timing/spec.md), adds a
-reading scenario and a feature that asks whether long pauses fall on long pages. In Claude Code the
+reading scenario and a feature that asks whether long pauses fall on long pages; the third,
+[003 laboratory adversary](specs/003-laboratory-adversary/spec.md), lets the laboratory's
+automated cohort run those adversaries for real. In Claude Code the
 steps are the `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`
 and `/speckit-converge` skills in `.claude/skills/`.
 

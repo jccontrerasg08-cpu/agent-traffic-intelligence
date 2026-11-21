@@ -6,6 +6,8 @@ All notable changes will be documented here.
 
 ### Added
 
+- `ati external-check`: the timing features on Iliou et al.'s public web bot dataset (downloaded by the operator, never committed), as an aggregate-only report that reproduces the external check in Evidence 5.
+- Spec 003, a laboratory adversary: the laboratory's executor can run the automated cohort as `imitate` or `imitate-content`, mirroring `pf2-simulate`; ATI pins the reading-load factors both sides share.
 - Spec-driven development with Spec Kit 1.4.3: a project constitution that gathers the ADRs' principles into seven gates, and the first specification, plan and task list in `specs/001-adversarial-timing/`.
 - Spec 002, content-conditional timing: a `content_tempo` feature family (`dwell_ratio_bucket`, mean dwell on long pages over short pages, from reading loads pinned to the laboratory's catalogue `ati-pf2-catalogue-2`), `ati pf2-simulate --scenario reading`, and two adversaries, `imitate` (person-like pauses placed without regard to content) and `imitate-content` (placed by content). The sweep, the null control and an external check on a public dataset are Evidence 5 in the model improvement evidence.
 - `ati pf2-simulate --automation-model imitate --imitation-fidelity F`: simulated automation that imitates human pausing, drawn from its own random stream so the plain timer's corpora stay byte-identical. The fidelity sweep is recorded in the model improvement evidence.

@@ -27,6 +27,7 @@ from agent_traffic_intelligence.evaluation.campaign import (
     build_navigation_campaign_plan,
     validate_campaign_runtime,
 )
+from agent_traffic_intelligence.evaluation.external import ExternalDatasetError, iliou_report
 from agent_traffic_intelligence.evaluation.pf2.baseline import (
     PF2BaselineError,
     evaluate_pf2_baseline,
@@ -95,6 +96,7 @@ def _parser() -> argparse.ArgumentParser:
         _add_pf2_baseline_command,
         _add_pf2_export_command,
         _add_pf2_simulate_command,
+        _add_external_check_command,
         _add_campaign_command,
         _add_registry_command,
         _add_sources_command,
@@ -345,6 +347,18 @@ def _add_pf2_simulate_command(subparsers: _Subparsers) -> None:
     )
     simulate.add_argument("--seed", type=int, default=0, help="Deterministic seed (default: 0).")
     simulate.add_argument("--output", required=True, help="New JSON path for the plan.")
+
+
+def _add_external_check_command(subparsers: _Subparsers) -> None:
+    external = subparsers.add_parser(
+        "external-check",
+        help=(
+            "Run the timing features on Iliou et al.'s public web bot dataset, which you "
+            "download yourself (CC BY-NC-SA 4.0, never committed), and report aggregates."
+        ),
+    )
+    external.add_argument("--archive", required=True, help="Path to the dataset's .zip.")
+    external.add_argument("--output", required=True, help="New JSON path for the report.")
 
 
 def _add_pf2_export_command(subparsers: _Subparsers) -> None:
@@ -945,6 +959,21 @@ def _pf2_simulate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _external_check(args: argparse.Namespace) -> int:
+    try:
+        report = iliou_report(Path(args.archive))
+        _write_json(Path(args.output), report)
+    except (OSError, ExternalDatasetError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    summary = {
+        name: comparison["features"]["dwell_ratio"]["auc_human_above_bot"]
+        for name, comparison in report["comparisons"].items()
+    }
+    print(json.dumps({"output": args.output, "dwell_ratio_auc": summary}, sort_keys=True))
+    return 0
+
+
 def _pf2_export_bigquery(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir)
     try:
@@ -1416,6 +1445,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _pf2_baseline(args)
     if args.command == "pf2-simulate":
         return _pf2_simulate(args)
+    if args.command == "external-check":
+        return _external_check(args)
     if args.command == "pf2-export-bigquery":
         return _pf2_export_bigquery(args)
     if args.command == "evaluate-stratified":

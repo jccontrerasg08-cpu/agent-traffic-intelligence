@@ -601,3 +601,15 @@ def test_cli_refuses_the_content_aware_mimic_without_reading(tmp_path, capsys) -
 
     assert code == 2
     assert "needs the reading scenario" in capsys.readouterr().err
+
+
+# The laboratory's imitating executor (ati-observation-lab, spec 003) mirrors these
+# values in `executor.LOAD_FACTOR`, and its tests pin this identical literal. Change
+# both together, or a real adversary corpus stops matching the simulated one.
+LAB_PINNED_LOAD_FACTOR = {"short": 0.8, "long": 1.6}
+
+
+def test_reading_load_factors_match_the_laboratory_executor() -> None:
+    from agent_traffic_intelligence.evaluation.pf2 import simulation
+
+    assert dict(simulation._LOAD_FACTOR) == LAB_PINNED_LOAD_FACTOR
