@@ -19,7 +19,7 @@ from typing import Any
 
 _SESSION_ID_PREFIX = "hmac-sha256:"
 _SESSION_ID_HEX_LENGTH = 64
-PF2_CATALOGUE_VERSION = "ati-pf2-catalogue-1"
+PF2_CATALOGUE_VERSION = "ati-pf2-catalogue-2"
 """Version of the laboratory's closed catalogue that `PF2_ROUTE_CATEGORIES` mirrors.
 
 The laboratory repository's `observation_lab/pf2/catalogue.json` is the source of truth
@@ -40,6 +40,22 @@ PF2_ROUTE_CATEGORIES: Mapping[str, str] = MappingProxyType(
     }
 )
 """Routes eligible for an ATI-PF-2 corpus and their coarse route category."""
+
+PF2_READING_LOAD: Mapping[str, str] = MappingProxyType(
+    {
+        "start": "short",
+        "landing": "short",
+        "complete": "short",
+        "catalog": "long",
+        "detail": "long",
+        "related": "long",
+    }
+)
+"""How much each page category gives a reader to read, pinned to the laboratory catalogue.
+
+Assets have no reading load: a browser fetches them with their page, so their time is
+attributed to that page.
+"""
 
 _ROUTE_CATEGORIES = tuple(sorted(set(PF2_ROUTE_CATEGORIES.values())))
 _DELAY_BIN_NAMES = (
@@ -74,6 +90,7 @@ PF2_FEATURE_FAMILIES: Mapping[str, tuple[str, ...]] = MappingProxyType(
         ),
         "coarsened_tempo": ("session_duration_bucket", *_DELAY_BIN_NAMES),
         "tempo_shape": ("delay_dispersion_bucket", "delay_tail_bucket"),
+        "content_tempo": ("dwell_ratio_bucket",),
     }
 )
 """Permitted feature families from the controlled-corpus feature contract."""
@@ -164,6 +181,7 @@ def _duration_bucket(duration_seconds: float) -> int:
 # Upper bounds of the lower buckets; a value at or above the last bound is the top bucket.
 _DISPERSION_BOUNDS = (0.15, 0.3, 0.6)
 _TAIL_BOUNDS = (1.5, 2.5, 4.0)
+_DWELL_RATIO_BOUNDS = (1.0, 2.0, 3.5)
 
 
 def _bucket(value: float, bounds: tuple[float, ...]) -> int:
@@ -189,6 +207,27 @@ def _tempo_shape(delays: list[float]) -> tuple[int, int]:
     dispersion = statistics.pstdev(delays) / mean
     tail = max(delays) / median
     return _bucket(dispersion, _DISPERSION_BOUNDS), _bucket(tail, _TAIL_BOUNDS)
+
+
+def _dwell_ratio(navigations: list[tuple[str, datetime]]) -> int:
+    """Bucket how much longer a session stays on long pages than on short ones.
+
+    Dwell on a page runs from its request to the next navigation, so an asset counts
+    toward the page that loaded it. The last page has no dwell. Only the ratio is kept,
+    which a person's overall pace and the pacing regime both cancel out of. A session
+    without a measurable dwell on both a short and a long page falls in bucket 0.
+    """
+
+    dwell: dict[str, list[float]] = {"short": [], "long": []}
+    for (category, started), (_, left) in pairwise(navigations):
+        dwell[PF2_READING_LOAD[category]].append((left - started).total_seconds())
+    if not dwell["short"] or not dwell["long"]:
+        return 0
+    short = sum(dwell["short"]) / len(dwell["short"])
+    long = sum(dwell["long"]) / len(dwell["long"])
+    if short <= 0 or long <= 0:
+        return 0
+    return _bucket(long / short, _DWELL_RATIO_BOUNDS)
 
 
 def _empty_feature_row() -> dict[str, int | bool]:
@@ -222,6 +261,9 @@ def _session_features(
     for delay in delays:
         row[_delay_bin_name(delay)] += 1
     row["delay_dispersion_bucket"], row["delay_tail_bucket"] = _tempo_shape(delays)
+    row["dwell_ratio_bucket"] = _dwell_ratio(
+        [(category, observed_at) for category, _, _, observed_at in ordered if category != "asset"]
+    )
     row["session_duration_bucket"] = _duration_bucket(
         max(0.0, (timestamps[-1] - timestamps[0]).total_seconds())
     )

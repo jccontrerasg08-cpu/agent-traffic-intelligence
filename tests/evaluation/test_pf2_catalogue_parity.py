@@ -7,12 +7,13 @@ change on one side alone: change the catalogue, both pins, and both repositories
 
 from agent_traffic_intelligence.evaluation.pf2 import (
     PF2_CATALOGUE_VERSION,
+    PF2_READING_LOAD,
     PF2_ROUTE_CATEGORIES,
     PF2ProtocolError,
     prepare_pf2_dataset,
 )
 
-LAB_PINNED_VERSION = "ati-pf2-catalogue-1"
+LAB_PINNED_VERSION = "ati-pf2-catalogue-2"
 LAB_PINNED_CATEGORIES = {
     "/lab/start": "start",
     "/lab/page/landing": "landing",
@@ -25,9 +26,25 @@ LAB_PINNED_CATEGORIES = {
 }
 
 
+LAB_PINNED_READING_LOAD = {
+    "start": "short",
+    "landing": "short",
+    "complete": "short",
+    "catalog": "long",
+    "detail": "long",
+    "related": "long",
+}
+
+
 def test_route_mapping_matches_the_laboratory_catalogue() -> None:
     assert PF2_CATALOGUE_VERSION == LAB_PINNED_VERSION
     assert dict(PF2_ROUTE_CATEGORIES) == LAB_PINNED_CATEGORIES
+    assert dict(PF2_READING_LOAD) == LAB_PINNED_READING_LOAD
+
+
+def test_every_page_category_has_a_reading_load_and_assets_have_none() -> None:
+    pages = set(PF2_ROUTE_CATEGORIES.values()) - {"asset"}
+    assert set(PF2_READING_LOAD) == pages
 
 
 def test_the_laboratory_integrity_route_is_rejected_by_the_preflight() -> None:

@@ -24,6 +24,7 @@ from agent_traffic_intelligence.evaluation.pf2.export import (
 from agent_traffic_intelligence.evaluation.pf2.protocol import (
     PF2_CATALOGUE_VERSION,
     PF2_FEATURE_FAMILIES,
+    PF2_READING_LOAD,
     PF2_ROUTE_CATEGORIES,
     PF2_TARGET_NAME,
     PF2PreparedDataset,
@@ -36,6 +37,7 @@ from agent_traffic_intelligence.evaluation.pf2.simulation import (
     AutomationPauseModel,
     HumanPauseModel,
     SimulatedCorpus,
+    SimulatedScenario,
     plan_collection,
     simulate_matched_corpus,
 )
@@ -43,6 +45,7 @@ from agent_traffic_intelligence.evaluation.pf2.simulation import (
 __all__ = [
     "PF2_CATALOGUE_VERSION",
     "PF2_FEATURE_FAMILIES",
+    "PF2_READING_LOAD",
     "PF2_ROUTE_CATEGORIES",
     "PF2_TARGET_NAME",
     "AutomationPauseModel",
@@ -55,6 +58,7 @@ __all__ = [
     "PF2ProtocolError",
     "PF2Split",
     "SimulatedCorpus",
+    "SimulatedScenario",
     "assert_pf2_model_table",
     "bigquery_ddl",
     "build_bigquery_export",

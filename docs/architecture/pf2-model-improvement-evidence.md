@@ -131,6 +131,82 @@ What follows for the project:
 - The laboratory can test a real adversary only once its executor gains an imitating
   pacing mode. That is a separate feature.
 
+## Evidence 5: pauses that follow the content
+
+*Added 2026-11-21 by [spec 002](../../specs/002-content-conditional-timing/spec.md).
+Synthetic data only.*
+
+Evidence 4 left a gap: a mimic that draws person-like pauses defeats timing shape. Such a
+mimic copies *how long* people pause, not *where*. In the laboratory's reading scenario
+`ati-pf2-1.1`, every page declares a reading load in the closed catalogue, and a person's
+dwell on a page scales with it. The `content_tempo` family asks one question: is mean
+dwell on long pages larger than on short ones (`dwell_ratio_bucket`)?
+
+Three adversaries are run against the same human sessions: the plain timer; `imitate`,
+which draws person-like pauses but places them on a shuffled order of the session's pages;
+and `imitate-content`, which also places them by each page's load. In the null (`uniform`),
+people pause like the timer and ignore content as it does. The design is the recommended
+one: 12 participants, 72 sessions, participant-grouped splits, 20 corpora per cell.
+
+| Adversary | Fidelity | `lognormal`: detected · PR-AUC | `linger`: detected · PR-AUC |
+|---|---:|---:|---:|
+| timer | 0 | 100% · 0.93 | 100% · 0.94 |
+| `imitate` | 0.5 | 90% · 0.83 | 95% · 0.88 |
+| `imitate` | 1 | 90% · 0.84 | 90% · 0.85 |
+| `imitate-content` | 0.5 | 15% · 0.65 | 55% · 0.73 |
+| `imitate-content` | 1 | 0% · 0.55 | 0% · 0.54 |
+| null (`uniform`) | — | 0% · 0.54 | |
+
+Without the `content_tempo` family, on the same corpora:
+
+| Adversary | Fidelity | `lognormal`: detected · PR-AUC | `linger`: detected · PR-AUC |
+|---|---:|---:|---:|
+| `imitate` | 0.5 | 35% · 0.67 | 20% · 0.64 |
+| `imitate` | 1 | 5% · 0.57 | 10% · 0.58 |
+
+**Where a pause falls survives imitation of how long it is.** A full distribution mimic
+goes from 5–10% detected to 90%. A mimic that also follows the content is not detected,
+as it must not be: it is a null for this feature. At half fidelity the `linger` model is
+still detected 55% of the time, because its overlong pauses are not part of what the
+content-aware mimic copies. The null is never detected.
+
+A first run of this sweep found the null detected in 20 of 20 corpora. Simulated people
+under the null still followed the content, so they were not indistinguishable from the
+timer. The fix makes the null content-blind, and a test now holds it below detection
+(spec 002, task T020).
+
+### External check on a public dataset
+
+Iliou et al.'s web bot detection dataset (m4d.iti.gr, CC BY-NC-SA 4.0) is the closest
+public match to this protocol: labels come from the condition, with humans browsing a
+Wikipedia-derived site and bots driven by the authors, "moderate" and "advanced". The
+latter imitate human browsing. It stays outside both repositories because of its licence.
+Its web logs give page navigations to the second. We used response size as a proxy for
+reading load, split at the median page.
+
+| Comparison | Human ratio (median) | Bot ratio (median) | AUC, human > bot |
+|---|---:|---:|---:|
+| Phase 1, moderate bots | 1.46 | 0.94 | 0.72 |
+| Phase 1, advanced bots | 1.46 | 2.26 | 0.24 |
+| Phase 2, advanced bots | 1.43 | 2.53 | 0.23 |
+
+The moderate bots ignore content, and the ratio separates them as the simulation
+predicts. The advanced bots go further than any content-aware mimic modelled here: they
+dwell *more* in proportion to page length than people do. A detector that takes "dwell
+follows content" as the human signature would flag the people. In the same logs,
+navigation timing alone does not separate humans from phase-1 advanced bots (AUC
+0.41–0.52 across median gap, coefficient of variation and longest gap). Two caveats:
+response size is a rough proxy for reading load, and phase-2 human sessions are about six
+times longer than bot sessions, so most of the separability there is session length, a
+protocol artefact the matched design exists to prevent.
+
+What follows for the project:
+
+- `content_tempo` raises the cost of imitation; it does not close the gap. Content-aware
+  bots exist in public data today.
+- The ratio's direction must be learned from the matched corpus, never assumed.
+- Any real-data claim must report the content-aware mimic beside the distribution mimic.
+
 ## What this does not establish
 
 - That real people pause like either human model. They may be more regular than
@@ -158,6 +234,20 @@ for f in 0 0.25 0.5 0.75 1; do
   ati pf2-simulate --human-model lognormal --sessions-per-cell 2 --participants 12 \
     --repeats 20 --automation-model imitate --imitation-fidelity "$f" \
     --output "imitate-lognormal-$f.json"
+done
+```
+
+Evidence 5, in the reading scenario:
+
+```bash
+ati pf2-simulate --scenario reading --human-model uniform --sessions-per-cell 2 \
+  --participants 12 --repeats 20 --output reading-null.json
+for model in imitate imitate-content; do
+  for f in 0.5 1; do
+    ati pf2-simulate --scenario reading --human-model lognormal --sessions-per-cell 2 \
+      --participants 12 --repeats 20 --automation-model "$model" \
+      --imitation-fidelity "$f" --output "reading-$model-$f.json"
+  done
 done
 ```
 

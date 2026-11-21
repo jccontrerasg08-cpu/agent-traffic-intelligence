@@ -7,6 +7,7 @@ All notable changes will be documented here.
 ### Added
 
 - Spec-driven development with Spec Kit 1.4.3: a project constitution that gathers the ADRs' principles into seven gates, and the first specification, plan and task list in `specs/001-adversarial-timing/`.
+- Spec 002, content-conditional timing: a `content_tempo` feature family (`dwell_ratio_bucket`, mean dwell on long pages over short pages, from reading loads pinned to the laboratory's catalogue `ati-pf2-catalogue-2`), `ati pf2-simulate --scenario reading`, and two adversaries, `imitate` (person-like pauses placed without regard to content) and `imitate-content` (placed by content). The sweep, the null control and an external check on a public dataset are Evidence 5 in the model improvement evidence.
 - `ati pf2-simulate --automation-model imitate --imitation-fidelity F`: simulated automation that imitates human pausing, drawn from its own random stream so the plain timer's corpora stay byte-identical. The fidelity sweep is recorded in the model improvement evidence.
 - Observe-only V0 architecture, privacy-safe JSONL normalization, curated agent claims, bounded request/session features, four independent scores, and the original CLI.
 - ATI-PF-2 baseline ladder (`ati pf2-baseline`): forward-chained temporal, leave-one-task-out and grouped-session holdouts, a constant-prevalence baseline, a dependency-free L2-regularized logistic regression, train-partition-only standardization and threshold selection, session-cluster resampling intervals, and one refit ablation per permitted feature family.
