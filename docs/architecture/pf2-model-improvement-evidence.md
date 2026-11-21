@@ -182,20 +182,22 @@ public match to this protocol: labels come from the condition, with humans brows
 Wikipedia-derived site and bots driven by the authors, "moderate" and "advanced". The
 latter imitate human browsing. It stays outside both repositories because of its licence.
 Its web logs give page navigations to the second. We used response size as a proxy for
-reading load, split at the median page.
+reading load, split at the median page, and dropped gaps over ten minutes. `ati
+external-check --archive dataset.zip --output report.json` reproduces the table from the
+archive you download; the report holds aggregates only.
 
 | Comparison | Human ratio (median) | Bot ratio (median) | AUC, human > bot |
 |---|---:|---:|---:|
-| Phase 1, moderate bots | 1.46 | 0.94 | 0.72 |
-| Phase 1, advanced bots | 1.46 | 2.26 | 0.24 |
-| Phase 2, advanced bots | 1.43 | 2.53 | 0.23 |
+| Phase 1, moderate bots | 1.58 | 0.93 | 0.73 |
+| Phase 1, advanced bots | 1.46 | 2.26 | 0.25 |
+| Phase 2, advanced bots | 1.37 | 2.62 | 0.19 |
 
 The moderate bots ignore content, and the ratio separates them as the simulation
 predicts. The advanced bots go further than any content-aware mimic modelled here: they
 dwell *more* in proportion to page length than people do. A detector that takes "dwell
 follows content" as the human signature would flag the people. In the same logs,
 navigation timing alone does not separate humans from phase-1 advanced bots (AUC
-0.41–0.52 across median gap, coefficient of variation and longest gap). Two caveats:
+0.41–0.49 across median gap, coefficient of variation and longest gap). Two caveats:
 response size is a rough proxy for reading load, and phase-2 human sessions are about six
 times longer than bot sessions, so most of the separability there is session length, a
 protocol artefact the matched design exists to prevent.

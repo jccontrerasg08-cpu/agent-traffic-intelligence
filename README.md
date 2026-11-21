@@ -348,6 +348,13 @@ draws person-like pauses but places them without regard to the page, and
 family detects the first and, by design, not the second
 ([spec 002](specs/002-content-conditional-timing/spec.md)).
 
+`ati external-check --archive dataset.zip --output report.json` runs the same timing
+features on Iliou et al.'s public web bot dataset, whose labels come from how each session
+was produced. Download the archive yourself from m4d.iti.gr: its licence, CC BY-NC-SA
+4.0, forbids committing it here. The report holds aggregates only, and Evidence 5 in the
+[model improvement evidence](docs/architecture/pf2-model-improvement-evidence.md) records
+what it shows.
+
 ```bash
 ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \
   --target-false-positive-rate 0.05
