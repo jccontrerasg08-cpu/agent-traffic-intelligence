@@ -254,8 +254,11 @@ def _follows_content(
     misplaced load.
     """
 
+    if human_model is HumanPauseModel.UNIFORM:
+        # Under the null nobody follows the content, so an imitation of it does not either.
+        return [False] * len(imitated)
     if not automated:
-        return [human_model is not HumanPauseModel.UNIFORM] * len(imitated)
+        return [True] * len(imitated)
     content_aware = automation_model is AutomationPauseModel.IMITATE_CONTENT
     return [(True if content_aware else None) if copied else False for copied in imitated]
 

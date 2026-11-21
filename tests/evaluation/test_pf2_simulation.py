@@ -478,6 +478,25 @@ def test_the_null_is_not_detected_in_the_reading_scenario() -> None:
     assert null["sizes"][0]["detection_rate"] <= 0.2
 
 
+@pytest.mark.parametrize(
+    "model", [AutomationPauseModel.IMITATE, AutomationPauseModel.IMITATE_CONTENT]
+)
+def test_imitating_the_null_stays_a_null_in_the_reading_scenario(
+    model: AutomationPauseModel,
+) -> None:
+    corpus = simulate_matched_corpus(
+        human_model=HumanPauseModel.UNIFORM,
+        sessions_per_cell=2,
+        participants=12,
+        seed=7,
+        automation_model=model,
+        imitation_fidelity=1.0,
+        scenario=SimulatedScenario.READING,
+    )
+
+    assert _mean_ratio(corpus, automated=True) < 1.3
+
+
 def test_only_the_content_aware_mimic_places_its_dwell_by_content() -> None:
     blind = _reading(AutomationPauseModel.IMITATE, 1.0)
     aware = _reading(AutomationPauseModel.IMITATE_CONTENT, 1.0)
