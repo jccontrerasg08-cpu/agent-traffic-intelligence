@@ -116,8 +116,12 @@ kept the simpler logistic. Splits now also hold out whole participants, and a po
 the recruitment target at 12 people with 3 sessions each
 ([evidence](architecture/pf2-model-improvement-evidence.md)). The same evidence also shows
 the limit: automation that imitates human pausing on a quarter of its pauses halves
-detection. Timing shape can support a classification against unsophisticated automation,
-and it is never identity.
+detection. Spec 002 answered that limit with the question a distribution mimic does not
+ask: does the session spend its long pauses on the pages that take long to read? In a
+reading scenario this detects a mimic that copies human pausing but ignores content, and
+by design it does not detect one that also places its pauses by content. A public dataset
+with controlled labels shows that such content-aware bots already exist. Timing shape can
+support a classification against unsophisticated automation, and it is never identity.
 
 ## Running it against real infrastructure
 

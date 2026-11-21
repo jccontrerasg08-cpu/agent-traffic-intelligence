@@ -19,8 +19,8 @@ that never merge**:
 
 - the *model table* holds the boolean target and the permitted session features, from the
   declared families, and nothing else (67 features in four families at adoption; 69 in five
-  since the laboratory's feature contract 1.1 added tempo shape). Any other column fails
-  the run;
+  since the laboratory's feature contract 1.1 added tempo shape; 70 in six since contract
+  1.2 added content tempo). Any other column fails the run;
 - the *split manifest* holds the opaque session pseudonym, task, collection window and,
   when one source produced several sessions, an opaque group such as a participant code.
   It is read only to build train/holdout partitions.

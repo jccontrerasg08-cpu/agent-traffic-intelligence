@@ -11,6 +11,7 @@ import pytest
 
 from agent_traffic_intelligence.cli import main
 from agent_traffic_intelligence.evaluation.pf2.protocol import (
+    PF2_READING_LOAD,
     PF2_ROUTE_CATEGORIES,
     prepare_pf2_dataset,
 )
@@ -20,6 +21,7 @@ from agent_traffic_intelligence.evaluation.pf2.simulation import (
     AutomationPauseModel,
     HumanPauseModel,
     SimulatedCorpus,
+    SimulatedScenario,
     plan_collection,
     simulate_matched_corpus,
 )
@@ -399,3 +401,184 @@ def test_imitating_a_timer_like_person_still_runs_and_reports() -> None:
     assert plan["human_model"] == "uniform"
     assert plan["automation_model"] == "imitate"
     assert len(plan["sizes"]) == 1
+
+
+def _reading(
+    automation_model: AutomationPauseModel = AutomationPauseModel.TIMER, fidelity: float = 0.0
+) -> SimulatedCorpus:
+    return simulate_matched_corpus(
+        human_model=HumanPauseModel.LOGNORMAL,
+        sessions_per_cell=2,
+        participants=12,
+        seed=7,
+        automation_model=automation_model,
+        imitation_fidelity=fidelity,
+        scenario=SimulatedScenario.READING,
+    )
+
+
+def _dwell_ratio(corpus: SimulatedCorpus, session: str) -> float:
+    navigations = [
+        (record["request_uri"], datetime.fromisoformat(record["time_iso8601"]))
+        for record in corpus.records
+        if record["session_id"] == session and "/assets/" not in record["request_uri"]
+    ]
+    dwell: dict[str, list[float]] = defaultdict(list)
+    for (path, started), (_, left) in pairwise(navigations):
+        load = PF2_READING_LOAD[PF2_ROUTE_CATEGORIES[path]]
+        dwell[load].append((left - started).total_seconds())
+    return (sum(dwell["long"]) / len(dwell["long"])) / (sum(dwell["short"]) / len(dwell["short"]))
+
+
+def _mean_ratio(corpus: SimulatedCorpus, automated: bool) -> float:
+    ratios = [_dwell_ratio(corpus, s) for s, label in corpus.labels.items() if label == automated]
+    return sum(ratios) / len(ratios)
+
+
+def test_in_the_reading_scenario_assets_follow_their_page_for_both_cohorts() -> None:
+    corpus = _reading()
+
+    for session, pauses in _pauses_by_session(corpus).items():
+        plan = SIMULATED_PLANS[corpus.tasks[session]]
+        asset_pauses = [p for p, path in zip(pauses, plan[1:], strict=True) if "/assets/" in path]
+        assert asset_pauses and all(pause < 1.0 for pause in asset_pauses)
+
+
+def test_people_dwell_longer_on_long_pages_and_the_timer_does_not() -> None:
+    corpus = _reading()
+
+    assert _mean_ratio(corpus, automated=False) > 1.6
+    assert _mean_ratio(corpus, automated=True) < 1.3
+
+
+def test_the_null_ignores_the_content_in_the_reading_scenario() -> None:
+    corpus = simulate_matched_corpus(
+        human_model=HumanPauseModel.UNIFORM,
+        sessions_per_cell=2,
+        participants=12,
+        seed=7,
+        scenario=SimulatedScenario.READING,
+    )
+
+    assert _mean_ratio(corpus, automated=False) < 1.3
+    assert _mean_ratio(corpus, automated=True) < 1.3
+
+
+def test_the_null_is_not_detected_in_the_reading_scenario() -> None:
+    null = plan_collection(
+        human_model=HumanPauseModel.UNIFORM,
+        sessions_per_cell_options=[2],
+        participants=12,
+        repeats=5,
+        resamples=200,
+        scenario=SimulatedScenario.READING,
+    )
+
+    # One chance detection in five is allowed, as for the content-aware mimic.
+    assert null["sizes"][0]["detection_rate"] <= 0.2
+
+
+def test_only_the_content_aware_mimic_places_its_dwell_by_content() -> None:
+    blind = _reading(AutomationPauseModel.IMITATE, 1.0)
+    aware = _reading(AutomationPauseModel.IMITATE_CONTENT, 1.0)
+
+    assert _mean_ratio(aware, automated=True) > 1.6
+    assert _mean_ratio(blind, automated=True) < 1.4
+
+
+def test_reading_human_sessions_are_the_same_whichever_automation_runs() -> None:
+    timer = _pauses_by_session(_reading())
+    aware = _reading(AutomationPauseModel.IMITATE_CONTENT, 1.0)
+
+    for session, pauses in _pauses_by_session(aware).items():
+        if not aware.labels[session]:
+            assert pauses == timer[session]
+
+
+def test_the_content_aware_mimic_needs_the_reading_scenario() -> None:
+    with pytest.raises(ValueError, match="needs the reading scenario"):
+        simulate_matched_corpus(
+            human_model=HumanPauseModel.LOGNORMAL,
+            sessions_per_cell=1,
+            participants=6,
+            automation_model=AutomationPauseModel.IMITATE_CONTENT,
+            imitation_fidelity=1.0,
+        )
+
+
+def test_dwell_ratio_detects_the_distribution_mimic_and_not_the_content_aware_one() -> None:
+    # Paired: both plans score the same human sessions; only the adversary differs.
+    def plan(model: AutomationPauseModel) -> dict[str, Any]:
+        return plan_collection(
+            human_model=HumanPauseModel.LOGNORMAL,
+            sessions_per_cell_options=[2],
+            participants=12,
+            repeats=5,
+            resamples=200,
+            automation_model=model,
+            imitation_fidelity=1.0,
+            scenario=SimulatedScenario.READING,
+        )
+
+    blind, aware = plan(AutomationPauseModel.IMITATE), plan(AutomationPauseModel.IMITATE_CONTENT)
+
+    assert blind["scenario"] == "reading"
+    assert blind["sizes"][0]["detection_rate"] >= 0.8
+    # One chance detection in five is allowed: the content-aware mimic is a null here.
+    assert aware["sizes"][0]["detection_rate"] <= 0.2
+
+
+def test_cli_runs_the_reading_scenario_against_the_content_aware_mimic(tmp_path, capsys) -> None:
+    output = tmp_path / "plan.json"
+
+    code = main(
+        [
+            "pf2-simulate",
+            "--scenario",
+            "reading",
+            "--human-model",
+            "lognormal",
+            "--sessions-per-cell",
+            "1",
+            "--participants",
+            "6",
+            "--repeats",
+            "1",
+            "--resamples",
+            "20",
+            "--automation-model",
+            "imitate-content",
+            "--imitation-fidelity",
+            "1",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert code == 0
+    capsys.readouterr()
+    plan = json.loads(output.read_text())
+    assert (plan["scenario"], plan["automation_model"]) == ("reading", "imitate-content")
+
+
+def test_cli_refuses_the_content_aware_mimic_without_reading(tmp_path, capsys) -> None:
+    code = main(
+        [
+            "pf2-simulate",
+            "--human-model",
+            "lognormal",
+            "--sessions-per-cell",
+            "1",
+            "--participants",
+            "6",
+            "--automation-model",
+            "imitate-content",
+            "--imitation-fidelity",
+            "1",
+            "--output",
+            str(tmp_path / "plan.json"),
+        ]
+    )
+
+    assert code == 2
+    assert "needs the reading scenario" in capsys.readouterr().err

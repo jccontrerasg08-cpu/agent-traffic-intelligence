@@ -340,6 +340,14 @@ share *F* of its timer pauses with person-like ones, to test how much imitation 
 to defeat timing-shape detection
 ([spec 001](specs/001-adversarial-timing/spec.md)).
 
+With `--scenario reading`, sessions follow the laboratory's reading scenario
+`ati-pf2-1.1`: assets load right after their page, and a person's dwell on a page scales
+with its reading load from the closed catalogue. Against it, `--automation-model imitate`
+draws person-like pauses but places them without regard to the page, and
+`--automation-model imitate-content` places them by the page's load. The `content_tempo`
+family detects the first and, by design, not the second
+([spec 002](specs/002-content-conditional-timing/spec.md)).
+
 ```bash
 ati pf2-baseline model.jsonl --split-manifest splits.jsonl --output baseline.json \
   --target-false-positive-rate 0.05
@@ -404,7 +412,9 @@ New features follow [Spec Kit](https://github.com/github/spec-kit). The project'
 seven gates that every plan is checked against. Each feature then gets a specification
 (what and why), a plan (how, with a Constitution Check), and a dependency-ordered task
 list under [`specs/`](specs/). The first, [001 adversarial timing](specs/001-adversarial-timing/spec.md),
-tests timing-shape detection against automation that imitates people. In Claude Code the
+tests timing-shape detection against automation that imitates people; the second,
+[002 content-conditional timing](specs/002-content-conditional-timing/spec.md), adds a
+reading scenario and a feature that asks whether long pauses fall on long pages. In Claude Code the
 steps are the `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`
 and `/speckit-converge` skills in `.claude/skills/`.
 

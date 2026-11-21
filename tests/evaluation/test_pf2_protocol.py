@@ -383,3 +383,115 @@ def test_incomplete_or_blank_groups_fail_closed(groups: dict[str, str], message:
             group_by_session={sessions[key]: value for key, value in groups.items()},
             min_sessions_per_task_class=1,
         )
+
+
+# Captured before the content-tempo family existed (specs/002, T001): every column that
+# existed then must keep its value for a keypress-scenario corpus.
+_PRE_CONTENT_TEMPO_DIGEST = "887b55a6246890df164ee0ce7747576d21a0aec6e39bb7a7465771dc3ce554a5"
+_ADDED_BY_SPEC_002 = {"dwell_ratio_bucket"}
+
+
+def test_existing_feature_values_are_unchanged_for_a_keypress_corpus() -> None:
+    import hashlib
+    import json
+
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
+    from agent_traffic_intelligence.evaluation.pf2.simulation import (
+        HumanPauseModel,
+        simulate_matched_corpus,
+    )
+
+    corpus = simulate_matched_corpus(
+        human_model=HumanPauseModel.LOGNORMAL, sessions_per_cell=1, participants=6, seed=3
+    )
+    prepared = prepare_pf2_dataset(
+        corpus.records,
+        labels_by_session=corpus.labels,
+        task_by_session=corpus.tasks,
+        collection_window_by_session=corpus.windows,
+        group_by_session=corpus.groups,
+        min_sessions_per_task_class=1,
+    )
+    rows = [
+        {name: value for name, value in row.items() if name not in _ADDED_BY_SPEC_002}
+        for row in prepared.model_rows
+    ]
+
+    digest = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
+    assert digest == _PRE_CONTENT_TEMPO_DIGEST
+
+
+def _navigations(session_id: str, steps: list[tuple[str, float]]) -> list[dict[str, object]]:
+    """Records for (path, seconds since the previous request) steps."""
+
+    moment = datetime(2026, 12, 1, tzinfo=UTC)
+    records = []
+    for path, gap in steps:
+        moment += timedelta(seconds=gap)
+        records.append(
+            {
+                "session_id": session_id,
+                "request_uri": path,
+                "request_method": "GET",
+                "status": 200,
+                "time_iso8601": moment.isoformat(),
+            }
+        )
+    return records
+
+
+def _dwell_bucket(steps: list[tuple[str, float]]) -> int:
+    from agent_traffic_intelligence.evaluation.pf2.protocol import prepare_pf2_dataset
+
+    probe, other = _session("a"), _session("b")
+    dataset = prepare_pf2_dataset(
+        _navigations(probe, steps) + _navigations(other, [("/lab/start", 0.0)]),
+        labels_by_session={probe: False, other: True},
+        task_by_session={probe: "t", other: "t"},
+        min_sessions_per_task_class=1,
+    )
+    return int(dataset.model_rows[0]["dwell_ratio_bucket"])
+
+
+def _reading_session(short: float, long: float) -> list[tuple[str, float]]:
+    # Short pages: start, landing. Long pages: catalog, detail. Assets follow at once.
+    return [
+        ("/lab/start", 0.0),
+        ("/lab/page/landing", short),
+        ("/lab/assets/site.css", 0.1),
+        ("/lab/page/catalog", short - 0.1),
+        ("/lab/assets/pixel.svg", 0.1),
+        ("/lab/page/detail", long - 0.1),
+        ("/lab/complete", long),
+    ]
+
+
+def test_dwelling_longer_on_long_pages_raises_the_dwell_ratio() -> None:
+    even = _dwell_bucket(_reading_session(short=10.0, long=10.0))
+    reader = _dwell_bucket(_reading_session(short=8.0, long=20.0))
+
+    assert even == 1
+    assert reader == 2
+
+
+def test_an_asset_counts_toward_the_page_that_loaded_it() -> None:
+    # Moving the moment an asset is fetched inside a page's dwell changes nothing.
+    early = _reading_session(short=8.0, long=20.0)
+    late = [
+        ("/lab/start", 0.0),
+        ("/lab/page/landing", 8.0),
+        ("/lab/assets/site.css", 7.0),
+        ("/lab/page/catalog", 1.0),
+        ("/lab/assets/pixel.svg", 15.0),
+        ("/lab/page/detail", 5.0),
+        ("/lab/complete", 20.0),
+    ]
+
+    assert _dwell_bucket(early) == _dwell_bucket(late)
+
+
+def test_a_session_without_both_page_loads_falls_in_bucket_zero() -> None:
+    assert _dwell_bucket([("/lab/start", 0.0), ("/lab/page/landing", 5.0)]) == 0
+    assert _dwell_bucket([("/lab/page/catalog", 0.0), ("/lab/page/detail", 9.0)]) == 0
+    no_measurable_dwell = [("/lab/start", 0.0), ("/lab/page/catalog", 0.0), ("/lab/complete", 0.0)]
+    assert _dwell_bucket(no_measurable_dwell) == 0

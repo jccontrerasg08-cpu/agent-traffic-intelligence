@@ -43,6 +43,7 @@ from agent_traffic_intelligence.evaluation.pf2.protocol import (
 from agent_traffic_intelligence.evaluation.pf2.simulation import (
     AutomationPauseModel,
     HumanPauseModel,
+    SimulatedScenario,
     plan_collection,
 )
 from agent_traffic_intelligence.features.session import SessionFeatureState
@@ -323,6 +324,12 @@ def _add_pf2_simulate_command(subparsers: _Subparsers) -> None:
         type=_positive_integer,
         default=300,
         help="Session-cluster resamples per baseline run (default: 300).",
+    )
+    simulate.add_argument(
+        "--scenario",
+        choices=[scenario.value for scenario in SimulatedScenario],
+        default=SimulatedScenario.KEYPRESS.value,
+        help="Laboratory scenario: keypress (ati-pf2-1.0) or reading (ati-pf2-1.1).",
     )
     simulate.add_argument(
         "--automation-model",
@@ -928,6 +935,7 @@ def _pf2_simulate(args: argparse.Namespace) -> int:
             seed=args.seed,
             automation_model=AutomationPauseModel(args.automation_model),
             imitation_fidelity=args.imitation_fidelity,
+            scenario=SimulatedScenario(args.scenario),
         )
         _write_json(Path(args.output), plan)
     except (OSError, ValueError) as exc:
