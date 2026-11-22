@@ -153,8 +153,16 @@ def plan_transfer(
 ) -> dict[str, Any]:
     """Train on one adversary and test on another, `repeats` times, with new people."""
 
-    if repeats < 1:
-        raise ValueError("repeats must be positive")
+    if not 1 <= repeats < _TEST_SEED_OFFSET:
+        raise ValueError(f"repeats must be between 1 and {_TEST_SEED_OFFSET - 1}")
+    for model, fidelity in (
+        (train_automation_model, train_imitation_fidelity),
+        (test_automation_model, test_imitation_fidelity),
+    ):
+        # At fidelity 0 an imitating adversary copies no pause and runs as the timer, so
+        # the report would name an adversary that never ran.
+        if model is not AutomationPauseModel.TIMER and fidelity == 0.0:
+            raise ValueError(f"{model.value} needs an imitation fidelity above 0")
     results: dict[str, list[float]] = {name: [] for name in SCORES}
     for repeat in range(repeats):
         base = seed * 1_000_003 + repeat

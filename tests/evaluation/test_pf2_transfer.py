@@ -169,3 +169,41 @@ def test_cli_refuses_an_inconsistent_adversary_and_writes_nothing(tmp_path, caps
     assert code == 2
     assert not output.exists()
     assert "error:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"test_imitation_fidelity": 0.0}, "overread needs an imitation fidelity above 0"),
+        ({"repeats": 500_000}, "repeats must be between 1 and 499999"),
+        ({"repeats": 0}, "repeats must be between"),
+    ],
+)
+def test_a_transfer_that_would_misreport_is_refused(
+    options: dict[str, Any], message: str
+) -> None:
+    arguments: dict[str, Any] = {
+        "human_model": HumanPauseModel.LOGNORMAL,
+        "sessions_per_cell": 1,
+        "participants": 6,
+        "train_automation_model": AutomationPauseModel.TIMER,
+        "test_automation_model": AutomationPauseModel.OVERREAD,
+        "test_imitation_fidelity": 1.0,
+        "repeats": 1,
+    }
+    arguments.update(options)
+
+    with pytest.raises(ValueError, match=message):
+        plan_transfer(**arguments)
+
+
+def test_the_refusal_names_the_adversary_that_needs_reading() -> None:
+    with pytest.raises(ValueError, match=r"^overread needs the reading scenario$"):
+        simulate_matched_corpus(
+            human_model=HumanPauseModel.LOGNORMAL,
+            sessions_per_cell=1,
+            participants=6,
+            automation_model=AutomationPauseModel.OVERREAD,
+            imitation_fidelity=1.0,
+            scenario=SimulatedScenario.KEYPRESS,
+        )

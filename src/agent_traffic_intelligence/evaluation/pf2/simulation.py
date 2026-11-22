@@ -102,7 +102,9 @@ class AutomationPauseModel(StrEnum):
     OVERREAD = "overread"
     """Like `imitate-content`, but it overdoes it: long pages stretch its pauses much more,
     and short pages shrink them more, than they do a person's. The advanced bots of Iliou
-    et al.'s public dataset dwell this way. Only meaningful in the reading scenario."""
+    et al.'s public dataset dwell this way. Only meaningful in the reading scenario. It
+    exists in simulation only: the laboratory executor has no overreading mode, so plan
+    real collections with the adversaries it can run."""
 
 
 class SimulatedScenario(StrEnum):
@@ -252,7 +254,7 @@ def _validated_imitation(
         automation_model.value in _CONTENT_AWARE
         and scenario is not SimulatedScenario.READING
     ):
-        raise ValueError("imitate-content needs the reading scenario")
+        raise ValueError(f"{automation_model.value} needs the reading scenario")
 
 
 def _follows_content(
@@ -290,8 +292,9 @@ def _read(
     """Turn keypress pauses into the reading scenario's timing.
 
     An asset follows its page after a short fetch delay. A navigation's pause is scaled by
-    the reading load of the page being left: its own load when the pause follows content,
-    a shuffled one of the session's loads when it is a distribution mimic's, none for a
+    `load_factor` at the reading load of the page being left: its own load when the pause
+    follows content, a shuffled one of the session's loads when it is a distribution
+    mimic's, none for a
     timer.
     """
 
