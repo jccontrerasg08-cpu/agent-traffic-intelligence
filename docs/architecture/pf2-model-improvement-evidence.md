@@ -209,6 +209,105 @@ What follows for the project:
 - The ratio's direction must be learned from the matched corpus, never assumed.
 - Any real-data claim must report the content-aware mimic beside the distribution mimic.
 
+## Evidence 6: the instrument, live
+
+*Added 2026-11-22 by [spec 003](../../specs/003-laboratory-adversary/spec.md). Real
+infrastructure, automated sessions only.*
+
+Evidences 1 to 5 ran on synthetic corpora. This run checks the whole path on the deployed
+laboratory: the executor, the Cloudflare Worker at `observe.ati-observation-lab.com`, the
+Railway origin, an export of the origin's privacy-safe rows, the laboratory's corpus
+builder and ATI's features. Eighteen automated sessions ran in the reading scenario
+`ati-pf2-1.1` on 2026-11-22, regime H1, six per adversary, alternating the two tasks.
+
+All 18 sessions were accepted. The export held exactly 126 rows, seven per session, and
+the corpus builder reconciled every session with no unmatched identifier. It flagged each
+corpus as single-class, as it must without the consented cohort. Measured on the origin's
+timestamps:
+
+| Adversary | Dwell ratio, median (range) | `dwell_ratio_bucket` | Pause CV, median | Asset after page, max |
+|---|---:|---|---:|---:|
+| `timer` | 1.16 (0.93–1.32) | 0, 0, 1, 1, 1, 1 | 0.26 | 0.24 s |
+| `imitate` | 0.80 (0.39–1.61) | 0, 0, 0, 0, 1, 1 | 0.45 | 0.23 s |
+| `imitate-content` | 2.02 (1.33–5.17) | 1, 1, 1, 2, 3, 3 | 0.38 | 0.30 s |
+
+What it shows:
+
+- **The edge and the network do not erase the behaviour.** The ratios land where each
+  adversary aims: about 1 for both content-blind pacings, about 2 for the content-aware
+  one, whose factors are 1.6 over 0.8. Person-like pauses are more irregular than the
+  timer's, as tempo shape expects.
+- **Assets follow their page within a third of a second**, so the reading scenario's
+  assumption holds in production (spec 002, SC-004).
+- **Bucket 0 conflates two cases.** A ratio below 1 and a session without a measurable
+  dwell on both loads share bucket 0. In the reading scenario every session has both, so
+  the conflation costs nothing today, but four of six `imitate` sessions landed there for
+  the first reason.
+- **The direction of the ratio is not monotone in the threat model.** People sit near 2,
+  timers near 1, and Evidence 5's advanced bots above people. A logistic rung that reads
+  each bucket as one number can only learn "higher is more human", so it would score a
+  bot that over-reads as more human than people. Spec 004 addresses this.
+
+Six sessions per adversary say nothing about detection rates; they validate the instrument.
+
+To reproduce, run the sessions with `ati-lab-session --scenario-version ati-pf2-1.1
+--cohort automated --automation-pacing <adversary>`, export the origin's rows for the
+window from Railway's logs as one JSON object per row, reconcile each adversary's
+directory with `ati-lab-corpus --diagnostic`, and read the features from the corpus's
+`access.jsonl`.
+
+## Evidence 7: automation the model has never seen
+
+*Added 2026-11-22 by [spec 004](../../specs/004-transfer-evaluation/spec.md). Synthetic data
+only.*
+
+Every evidence above scores the model on the adversary it was trained against. A deployed
+detector meets new automation. `ati pf2-transfer` trains on one synthetic corpus and scores
+a second with different people and a different adversary. It compares three scores: the
+ladder's logistic rung; a **human reference**, which learns only what people do (the share
+of people showing each value of the scale-free features in `tempo_shape` and
+`content_tempo`) and flags whatever departs from them; and their **combination**, each as
+its percentile among the training people, taking the larger. The new adversary
+`overread` follows the content but overdoes it, with a long-over-short ratio about 1.6
+times a person's, as the advanced bots of Evidence 5 do.
+
+Reading scenario, 12 participants, 72 sessions per corpus, `lognormal` people, 20 repeats.
+Each cell is the mean AUC, then the share of repeats below 0.5 (the score ranked the
+automation as more human than the people):
+
+| Trained on | Tested on | Logistic | Human reference | Combined |
+|---|---|---:|---:|---:|
+| `timer` | `timer` | 0.94 · 0% | 0.82 · 0% | 0.88 · 0% |
+| `timer` | `imitate` | 0.65 · 5% | 0.69 · 0% | 0.68 · 0% |
+| `timer` | `imitate-content` | 0.49 · 65% | 0.50 · 60% | 0.48 · 70% |
+| `timer` | `overread` | **0.23 · 100%** | **0.67 · 5%** | 0.60 · 10% |
+| `imitate` | `timer` | 0.75 · 0% | 0.82 · 0% | 0.81 · 0% |
+| `imitate` | `imitate` | 0.80 · 0% | 0.69 · 0% | 0.74 · 0% |
+| `imitate` | `overread` | **0.30 · 100%** | **0.67 · 5%** | 0.61 · 10% |
+
+`linger` people give the same picture within 0.05. Against the null (`uniform` people)
+every score stays between 0.51 and 0.52.
+
+What it shows:
+
+- **The logistic rung is best on what it was trained on and inverted on an overreader.**
+  It learns that long dwell on long pages means a person, and extrapolates: a bot that
+  overdoes it scores as more human than people, in every repeat.
+- **The human reference never inverts on average.** It does not need to have seen the
+  adversary, because it models people only. It gives up some power against the known
+  adversary (0.82 against 0.94).
+- **A content-aware mimic that matches people stays undetected by every score**, as it
+  must: it is a null for these features.
+- Indicator (one-hot) coding of the buckets, tried first, did not fix the inversion
+  (0.29 against 0.16 in a scratch run), because people also reach the high buckets.
+
+What follows for the project:
+
+- A real-data report must state which adversary each score was trained on, and include
+  the human reference beside the logistic rung.
+- The human reference can be fitted from the consented cohort alone, so the first real
+  corpus can yield it even before any adversary corpus exists.
+
 ## What this does not establish
 
 - That real people pause like either human model. They may be more regular than
@@ -251,6 +350,14 @@ for model in imitate imitate-content; do
       --imitation-fidelity "$f" --output "reading-$model-$f.json"
   done
 done
+```
+
+Evidence 7, one cell:
+
+```bash
+ati pf2-transfer --human-model lognormal --sessions-per-cell 2 --participants 12 \
+  --repeats 20 --train-automation-model timer \
+  --test-automation-model overread --test-imitation-fidelity 1 --output transfer.json
 ```
 
 `--sessions-per-cell` 1, 2 and 4 give corpora of 36, 72 and 144 sessions. Evidence 1 and 2

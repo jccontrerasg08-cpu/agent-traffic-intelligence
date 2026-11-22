@@ -6,6 +6,7 @@ All notable changes will be documented here.
 
 ### Added
 
+- Spec 004: `ati pf2-transfer` trains on one adversary and scores another with new people, comparing the logistic rung with a human-reference score; a new `overread` adversary overdoes reading as the public dataset's advanced bots do. Evidence 6 records the instrument checked live on the deployed laboratory, and Evidence 7 shows the logistic rung inverted against an overreader while the human reference is not.
 - `ati external-check`: the timing features on Iliou et al.'s public web bot dataset (downloaded by the operator, never committed), as an aggregate-only report that reproduces the external check in Evidence 5.
 - Spec 003, a laboratory adversary: the laboratory's executor can run the automated cohort as `imitate` or `imitate-content`, mirroring `pf2-simulate`; ATI pins the reading-load factors both sides share.
 - Spec-driven development with Spec Kit 1.4.3: a project constitution that gathers the ADRs' principles into seven gates, and the first specification, plan and task list in `specs/001-adversarial-timing/`.

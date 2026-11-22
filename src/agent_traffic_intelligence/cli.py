@@ -47,6 +47,7 @@ from agent_traffic_intelligence.evaluation.pf2.simulation import (
     SimulatedScenario,
     plan_collection,
 )
+from agent_traffic_intelligence.evaluation.pf2.transfer import plan_transfer
 from agent_traffic_intelligence.features.session import SessionFeatureState
 from agent_traffic_intelligence.identity.configured import ProviderAwareVerificationManager
 from agent_traffic_intelligence.identity.policy import VerificationMode
@@ -96,6 +97,7 @@ def _parser() -> argparse.ArgumentParser:
         _add_pf2_baseline_command,
         _add_pf2_export_command,
         _add_pf2_simulate_command,
+        _add_pf2_transfer_command,
         _add_external_check_command,
         _add_campaign_command,
         _add_registry_command,
@@ -347,6 +349,35 @@ def _add_pf2_simulate_command(subparsers: _Subparsers) -> None:
     )
     simulate.add_argument("--seed", type=int, default=0, help="Deterministic seed (default: 0).")
     simulate.add_argument("--output", required=True, help="New JSON path for the plan.")
+
+
+def _add_pf2_transfer_command(subparsers: _Subparsers) -> None:
+    transfer = subparsers.add_parser(
+        "pf2-transfer",
+        help=(
+            "Train on synthetic matched corpora with one adversary and score new ones with "
+            "another, comparing the logistic rung with a human-reference score."
+        ),
+    )
+    models = [model.value for model in AutomationPauseModel]
+    transfer.add_argument(
+        "--human-model", required=True, choices=[model.value for model in HumanPauseModel]
+    )
+    transfer.add_argument("--sessions-per-cell", type=_positive_integer, required=True)
+    transfer.add_argument("--participants", type=_positive_integer, required=True)
+    transfer.add_argument("--repeats", type=_positive_integer, default=20)
+    transfer.add_argument(
+        "--scenario",
+        choices=[scenario.value for scenario in SimulatedScenario],
+        default=SimulatedScenario.READING.value,
+        help="Laboratory scenario (default: reading, where every adversary applies).",
+    )
+    transfer.add_argument("--train-automation-model", choices=models, required=True)
+    transfer.add_argument("--train-imitation-fidelity", type=float, default=0.0)
+    transfer.add_argument("--test-automation-model", choices=models, required=True)
+    transfer.add_argument("--test-imitation-fidelity", type=float, default=0.0)
+    transfer.add_argument("--seed", type=int, default=0, help="Deterministic seed (default: 0).")
+    transfer.add_argument("--output", required=True, help="New JSON path for the report.")
 
 
 def _add_external_check_command(subparsers: _Subparsers) -> None:
@@ -959,6 +990,28 @@ def _pf2_simulate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pf2_transfer(args: argparse.Namespace) -> int:
+    try:
+        report = plan_transfer(
+            human_model=HumanPauseModel(args.human_model),
+            sessions_per_cell=args.sessions_per_cell,
+            participants=args.participants,
+            train_automation_model=AutomationPauseModel(args.train_automation_model),
+            test_automation_model=AutomationPauseModel(args.test_automation_model),
+            train_imitation_fidelity=args.train_imitation_fidelity,
+            test_imitation_fidelity=args.test_imitation_fidelity,
+            scenario=SimulatedScenario(args.scenario),
+            repeats=args.repeats,
+            seed=args.seed,
+        )
+        _write_json(Path(args.output), report)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({"output": args.output, "fixture": True}, sort_keys=True))
+    return 0
+
+
 def _external_check(args: argparse.Namespace) -> int:
     try:
         report = iliou_report(Path(args.archive))
@@ -1445,6 +1498,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _pf2_baseline(args)
     if args.command == "pf2-simulate":
         return _pf2_simulate(args)
+    if args.command == "pf2-transfer":
+        return _pf2_transfer(args)
     if args.command == "external-check":
         return _external_check(args)
     if args.command == "pf2-export-bigquery":

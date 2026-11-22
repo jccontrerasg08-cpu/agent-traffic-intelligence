@@ -60,6 +60,10 @@ SIMULATED_WINDOWS = 3
 _EPOCH = datetime(2026, 1, 1, tzinfo=UTC)
 # How much a page's reading load stretches a reader's pause before the next navigation.
 _LOAD_FACTOR = MappingProxyType({"short": 0.8, "long": 1.6})
+# The overreading adversary's factors: a long-over-short ratio about 1.6 times a person's,
+# as the advanced bots' median ratio is to the people's in Iliou et al.'s phase 1.
+_OVERREAD_LOAD_FACTOR = MappingProxyType({"short": 0.6, "long": 1.9})
+_CONTENT_AWARE = frozenset({"imitate-content", "overread"})
 _ASSET_DELAY = (0.05, 0.4)
 _PERSONAL_PACE_SPREAD = 0.25
 _LINGER_PROBABILITY = 0.3
@@ -94,6 +98,11 @@ class AutomationPauseModel(StrEnum):
     IMITATE_CONTENT = "imitate-content"
     """Like `imitate`, but in the reading scenario it also dwells longer on long pages, as
     people do. Only meaningful in the reading scenario."""
+
+    OVERREAD = "overread"
+    """Like `imitate-content`, but it overdoes it: long pages stretch its pauses much more,
+    and short pages shrink them more, than they do a person's. The advanced bots of Iliou
+    et al.'s public dataset dwell this way. Only meaningful in the reading scenario."""
 
 
 class SimulatedScenario(StrEnum):
@@ -196,6 +205,12 @@ def simulate_matched_corpus(
                             follows_content=_follows_content(
                                 automated, imitated, automation_model, human_model
                             ),
+                            load_factor=(
+                                _OVERREAD_LOAD_FACTOR
+                                if automated
+                                and automation_model is AutomationPauseModel.OVERREAD
+                                else _LOAD_FACTOR
+                            ),
                         )
                     records.extend(_session_records(session, plan, pauses))
                     labels[session] = automated
@@ -234,7 +249,7 @@ def _validated_imitation(
     if automation_model is AutomationPauseModel.TIMER and fidelity != 0.0:
         raise ValueError("imitation_fidelity needs the imitate automation model")
     if (
-        automation_model is AutomationPauseModel.IMITATE_CONTENT
+        automation_model.value in _CONTENT_AWARE
         and scenario is not SimulatedScenario.READING
     ):
         raise ValueError("imitate-content needs the reading scenario")
@@ -259,7 +274,7 @@ def _follows_content(
         return [False] * len(imitated)
     if not automated:
         return [True] * len(imitated)
-    content_aware = automation_model is AutomationPauseModel.IMITATE_CONTENT
+    content_aware = automation_model.value in _CONTENT_AWARE
     return [(True if content_aware else None) if copied else False for copied in imitated]
 
 
@@ -270,6 +285,7 @@ def _read(
     imitation: random.Random,
     *,
     follows_content: list[bool | None],
+    load_factor: Mapping[str, float] = _LOAD_FACTOR,
 ) -> list[float]:
     """Turn keypress pauses into the reading scenario's timing.
 
@@ -295,9 +311,9 @@ def _read(
             result.append(reading.uniform(*_ASSET_DELAY))
             continue
         if follows is True:
-            pause *= _LOAD_FACTOR[loads[navigation]]
+            pause *= load_factor[loads[navigation]]
         elif follows is None:
-            pause *= _LOAD_FACTOR[misplaced[navigation]]
+            pause *= load_factor[misplaced[navigation]]
         result.append(pause)
         navigation += 1
     return result

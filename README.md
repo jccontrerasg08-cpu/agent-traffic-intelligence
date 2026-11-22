@@ -348,6 +348,10 @@ draws person-like pauses but places them without regard to the page, and
 family detects the first and, by design, not the second
 ([spec 002](specs/002-content-conditional-timing/spec.md)).
 
+`ati pf2-transfer` trains on one adversary and scores another, with new people: the
+logistic rung, trained against a timer, ranks a bot that overdoes reading as more human
+than people, while a human-reference score that models only people does not (Evidence 7).
+
 `ati external-check --archive dataset.zip --output report.json` runs the same timing
 features on Iliou et al.'s public web bot dataset, whose labels come from how each session
 was produced. Download the archive yourself from m4d.iti.gr: its licence, CC BY-NC-SA
@@ -423,7 +427,9 @@ tests timing-shape detection against automation that imitates people; the second
 [002 content-conditional timing](specs/002-content-conditional-timing/spec.md), adds a
 reading scenario and a feature that asks whether long pauses fall on long pages; the third,
 [003 laboratory adversary](specs/003-laboratory-adversary/spec.md), lets the laboratory's
-automated cohort run those adversaries for real. In Claude Code the
+automated cohort run those adversaries for real; the fourth,
+[004 transfer evaluation](specs/004-transfer-evaluation/spec.md), scores the model on
+automation it was not trained on. In Claude Code the
 steps are the `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`
 and `/speckit-converge` skills in `.claude/skills/`.
 
